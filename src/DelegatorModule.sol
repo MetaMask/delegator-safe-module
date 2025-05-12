@@ -24,6 +24,10 @@ interface ISafe {
     ) external returns (bool success, bytes memory returnData);
 }
 
+interface ISignatureValidator {
+    function isValidSignature(bytes memory _data, bytes memory _signature) external view returns (bytes4);
+}
+
 contract DelegatorModule {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
@@ -104,6 +108,10 @@ contract DelegatorModule {
         returnData_ = new bytes[](1);
         returnData_[0] = _execute(target_, value_, callData_);
         return returnData_;
+    }
+
+    function isValidSignature(bytes memory _data, bytes memory _signature) external view returns (bytes4) {
+        return ISignatureValidator(address(safe)).isValidSignature(_data, _signature);
     }
 
     ////////////////////////////// Internal Methods //////////////////////////////
