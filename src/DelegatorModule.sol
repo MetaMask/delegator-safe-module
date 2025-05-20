@@ -7,6 +7,7 @@ import {ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT} from "lib/delegation-framewo
 import {ExecutionLib} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
 import {Execution} from "lib/delegation-framework/lib/erc7579-implementation/src/interfaces/IERC7579Account.sol";
 import {Enum} from "lib/safe-smart-account/contracts/common/Enum.sol";
+import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 interface ISafe {
     function execTransactionFromModule(
@@ -104,6 +105,10 @@ contract DelegatorModule {
         returnData_ = new bytes[](1);
         returnData_[0] = _execute(target_, value_, callData_);
         return returnData_;
+    }
+
+    function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4) {
+        return IERC1271(address(safe)).isValidSignature(_hash, _signature);
     }
 
     ////////////////////////////// Internal Methods //////////////////////////////
