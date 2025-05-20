@@ -2,12 +2,13 @@
 
 pragma solidity ^0.8.13;
 
-import {ModeCode, CallType, ExecType} from "lib/delegation-framework/src/utils/Types.sol";
-import {ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ModeLib.sol";
-import {ExecutionLib} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
-import {Execution} from "lib/delegation-framework/lib/erc7579-implementation/src/interfaces/IERC7579Account.sol";
-import {Enum} from "lib/safe-smart-account/contracts/common/Enum.sol";
+import { ModeCode, CallType, ExecType } from "lib/delegation-framework/src/utils/Types.sol";
+import { ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT } from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ModeLib.sol";
+import { ExecutionLib } from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
+import { Execution } from "lib/delegation-framework/lib/erc7579-implementation/src/interfaces/IERC7579Account.sol";
+import { Enum } from "lib/safe-smart-account/contracts/common/Enum.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import { LibClone } from "lib/solady/src/utils/LibClone.sol";
 
 interface ISafe {
     function execTransactionFromModule(
@@ -43,6 +44,7 @@ contract DelegatorModule {
     /// @dev Error thrown when the execution fails.
     error ExecutionFailed();
 
+
     ////////////////////////////// Modifiers //////////////////////////////
 
     /**
@@ -50,7 +52,7 @@ contract DelegatorModule {
      * @dev Check that the caller is the stored delegation manager.
      */
     modifier onlyDelegationManager() {
-        if (msg.sender != address(delegationManager)) revert NotDelegationManager();
+        if (msg.sender != delegationManager) revert NotDelegationManager();
         _;
     }
 
@@ -59,22 +61,25 @@ contract DelegatorModule {
     /// @dev The DelegationManager contract that has root access to this contract
     address public immutable delegationManager;
 
-    /// @dev The Safe contract that this module is installed on
-    ISafe public immutable safe;
-
     ////////////////////////////// Constructor //////////////////////////////
 
     /**
      * @notice Initializes the DelegatorModule contract
      * @param _delegationManager the address of the trusted DelegationManager contract that will have root access to this contract
-     * @param _safe the address of the Safe contract that this module is installed on
      */
-    constructor(address _delegationManager, address _safe) {
+    constructor(address _delegationManager) {
         delegationManager = _delegationManager;
-        safe = ISafe(_safe);
     }
 
     ////////////////////////////// External Methods //////////////////////////////
+
+    /**
+     * @notice Returns the address of the Safe contract that this module is installed on
+     * @return safeAddress_ The address of the Safe contract
+     */
+    function safe() public view returns (address) {
+        return _getSafeAddressFromArgs();
+    }
 
     /**
      * @notice Executes one call on behalf of this contract,
@@ -108,10 +113,14 @@ contract DelegatorModule {
     }
 
     function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4) {
-        return IERC1271(address(safe)).isValidSignature(_hash, _signature);
+        return IERC1271(safe()).isValidSignature(_hash, _signature);
     }
 
     ////////////////////////////// Internal Methods //////////////////////////////
+
+    function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
+        safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
+    }
 
     /**
      * @notice Executes a call to a target contract through the Safe.
@@ -125,7 +134,7 @@ contract DelegatorModule {
         uint256 _value,
         bytes calldata _callData
     ) internal returns (bytes memory returnData_) {
-        (bool success, bytes memory returnData) = safe.execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
+        (bool success, bytes memory returnData) = ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
         if (!success) revert ExecutionFailed();
         return returnData;
     }
