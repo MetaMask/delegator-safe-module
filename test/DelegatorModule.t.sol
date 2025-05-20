@@ -7,6 +7,7 @@ import {ModeCode, CallType, ExecType} from "lib/delegation-framework/src/utils/T
 import {ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT, MODE_DEFAULT, ModeSelector, ModePayload} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ModeLib.sol";
 import {ExecutionLib} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
 import {Enum} from "lib/safe-smart-account/contracts/common/Enum.sol";
+import { LibClone } from "lib/solady/src/utils/LibClone.sol";
 
 contract MockSafe is ISafe {
     bool public shouldSucceed = true;
@@ -79,13 +80,19 @@ contract DelegatorModuleTest is Test {
     function setUp() public {
         mockSafe = new MockSafe();
         mockDelegationManager = new MockDelegationManager();
-        delegatorModule = new DelegatorModule(address(mockDelegationManager), address(mockSafe));
+        // Deploy implementation with manager
+        DelegatorModule implementation = new DelegatorModule(address(mockDelegationManager));
+        // Deploy clone with safe as immutable arg
+        bytes memory args = abi.encodePacked(address(mockSafe));
+        bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
+        address clone = LibClone.cloneDeterministic(address(implementation), args, salt);
+        delegatorModule = DelegatorModule(clone);
         counter = new CounterForTest();
     }
 
     function test_Constructor() public {
         assertEq(delegatorModule.delegationManager(), address(mockDelegationManager));
-        assertEq(address(delegatorModule.safe()), address(mockSafe));
+        assertEq(delegatorModule.safe(), address(mockSafe));
     }
 
     function test_ExecuteFromExecutor_Success() public {
