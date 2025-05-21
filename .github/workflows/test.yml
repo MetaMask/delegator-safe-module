@@ -1,43 +1,53 @@
-name: CI
+name: Tests
 
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
-
-env:
-  FOUNDRY_PROFILE: ci
+on: [push, pull_request]
 
 jobs:
-  check:
-    strategy:
-      fail-fast: true
+  pre_job:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: "read"
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: MetaMask/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: same_content_newer
 
-    name: Foundry project
+  check-ffi:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - name: Check out repository code
+        uses: actions/checkout@v2
+
+      - name: Search for 'ffi' in foundry.toml
+        run: |
+          if grep -q "ffi" "foundry.toml"; then
+            echo "Remove ffi configuration from the foundry.toml"
+            exit 1
+          fi
+
+  tests:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: MetaMask/foundry-toolchain@v1
+        with:
+          version: stable
 
-      - name: Show Forge version
-        run: |
-          forge --version
+      - name: Run Forge Install
+        run: forge install
 
-      - name: Run Forge fmt
-        run: |
-          forge fmt --check
-        id: fmt
+      - name: Check contract sizes
+        run: forge build --sizes --skip test --skip script --optimize true
 
-      - name: Run Forge build
-        run: |
-          forge build --sizes
-        id: build
-
-      - name: Run Forge tests
-        run: |
-          forge test -vvv
-        id: test
+      - name: Run tests
+        run: forge test -vvv
+        env:
+          LINEA_RPC_URL: ${{ secrets.LINEA_RPC_URL }}
