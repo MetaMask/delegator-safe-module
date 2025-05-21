@@ -18,7 +18,9 @@ interface ISafe {
         uint256 value,
         bytes memory data,
         Enum.Operation operation
-    ) external returns (bool success);
+    )
+        external
+        returns (bool success);
 
     /// @notice Executes a transaction from a module and returns the return data
     /// @param to Target address of module transaction
@@ -32,5 +34,7 @@ interface ISafe {
         uint256 value,
         bytes memory data,
         Enum.Operation operation
-    ) external returns (bool success, bytes memory returnData);
+    )
+        external
+        returns (bool success, bytes memory returnData);
 }

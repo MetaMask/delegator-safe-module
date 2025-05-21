@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 pragma solidity ^0.8.13;
 
-import { LibClone } from "lib/solady/src/utils/LibClone.sol";
+import { LibClone } from "@solady/utils/LibClone.sol";
+
 import { DelegatorModule } from "./DelegatorModule.sol";
 
 /// @notice Factory for deploying cheap DelegatorModule clones per Safe.
@@ -38,4 +39,4 @@ contract DelegatorModuleFactory {
         bytes memory args = abi.encodePacked(safe);
         predicted = LibClone.predictDeterministicAddress(implementation, args, salt, address(this));
     }
-} 
+}

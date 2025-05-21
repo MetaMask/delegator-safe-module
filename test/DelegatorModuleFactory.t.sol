@@ -5,8 +5,9 @@ import { Test } from "forge-std/Test.sol";
 import { DelegatorModuleFactory } from "../src/DelegatorModuleFactory.sol";
 import { DelegatorModule } from "../src/DelegatorModule.sol";
 
-contract MockSafe {}
-contract MockDelegationManager {}
+contract MockSafe { }
+
+contract MockDelegationManager { }
 
 contract DelegatorModuleFactoryTest is Test {
     DelegatorModuleFactory public factory;
@@ -43,4 +44,4 @@ contract DelegatorModuleFactoryTest is Test {
     }
 
     event ModuleDeployed(address indexed safe, address indexed implementation, address module);
-} 
+}
