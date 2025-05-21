@@ -39,8 +39,7 @@ contract DelegatorModuleFactoryTest is Test {
         bytes32 salt = keccak256("event_salt");
         vm.expectEmit(true, true, true, false);
         emit ModuleDeployed(address(mockSafe), factory.implementation(), address(0));
-        address module = factory.deploy(address(mockSafe), salt);
-        // The event is checked by expectEmit
+        factory.deploy(address(mockSafe), salt);
     }
 
     event ModuleDeployed(address indexed safe, address indexed implementation, address module);

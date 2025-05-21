@@ -97,7 +97,7 @@ contract DelegatorModuleTest is Test {
         counter = new CounterForTest();
     }
 
-    function test_Constructor() public {
+    function test_Constructor() public view {
         assertEq(delegatorModule.delegationManager(), address(mockDelegationManager));
         assertEq(delegatorModule.safe(), address(mockSafe));
     }
