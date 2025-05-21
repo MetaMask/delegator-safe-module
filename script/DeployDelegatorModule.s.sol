@@ -10,6 +10,7 @@ import { DelegatorModuleFactory } from "../src/DelegatorModuleFactory.sol";
  * @title DeployDelegatorModule
  * @notice Script to deploy the DelegatorModule using environment variables for configuration
  * @dev Set DELEGATION_MANAGER, SAFE_ADDRESS, and SAFE_OWNER_PRIVATE_KEY environment variables before running
+ * @dev to run the script: $ forge script script/DeployDelegatorModule.s.sol --rpc-url <your_rpc_url> --broadcast
  */
 contract DeployDelegatorModule is Script {
     function run() public returns (address deployedModule) {

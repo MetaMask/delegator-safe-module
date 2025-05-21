@@ -5,26 +5,10 @@ pragma solidity ^0.8.13;
 import { ModeCode, CallType, ExecType } from "lib/delegation-framework/src/utils/Types.sol";
 import { ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT } from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ModeLib.sol";
 import { ExecutionLib } from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
-import { Execution } from "lib/delegation-framework/lib/erc7579-implementation/src/interfaces/IERC7579Account.sol";
 import { Enum } from "lib/safe-smart-account/contracts/common/Enum.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { LibClone } from "lib/solady/src/utils/LibClone.sol";
-
-interface ISafe {
-    function execTransactionFromModule(
-        address to,
-        uint256 value,
-        bytes memory data,
-        Enum.Operation operation
-    ) external returns (bool success);
-
-    function execTransactionFromModuleReturnData(
-        address to,
-        uint256 value,
-        bytes memory data,
-        Enum.Operation operation
-    ) external returns (bool success, bytes memory returnData);
-}
+import { ISafe } from "./interfaces/ISafe.sol";
 
 contract DelegatorModule {
     using ModeLib for ModeCode;
