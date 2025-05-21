@@ -14,15 +14,12 @@ import { DelegatorModuleFactory } from "../src/DelegatorModuleFactory.sol";
  */
 contract DeployDelegatorModule is Script {
     function run() public returns (address deployedModule) {
-        bytes32 salt = bytes32(uint256(221));
+        bytes32 salt = bytes32(abi.encodePacked(vm.envString("SALT")));
+
         // Load environment variables
-        // address delegationManager = vm.envAddress("DELEGATION_MANAGER");
-        // address safeAddress = vm.envAddress("SAFE_ADDRESS");
-        // uint256 safeOwnerPrivateKey = vm.envUint("SAFE_OWNER_PRIVATE_KEY");
-        // address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
-        address delegationManager = 0x3EFC72fF137A5603Ce2E7108a70e56CAb49bf1e2;
-        address safeAddress = 0x3EFC72fF137A5603Ce2E7108a70e56CAb49bf1e2;
-        uint256 safeOwnerPrivateKey = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+        address delegationManager = vm.envAddress("DELEGATION_MANAGER");
+        address safeAddress = vm.envAddress("SAFE_ADDRESS");
+        uint256 safeOwnerPrivateKey = vm.envUint("SAFE_OWNER_PRIVATE_KEY");
         address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
         // Start broadcast for deployment transaction
         vm.startBroadcast(safeOwnerPrivateKey);
