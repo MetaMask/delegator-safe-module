@@ -2,18 +2,25 @@
 
 pragma solidity ^0.8.13;
 
-import { ModeCode, CallType, ExecType } from "lib/delegation-framework/src/utils/Types.sol";
-import { ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT } from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ModeLib.sol";
-import { ExecutionLib } from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
-import { Enum } from "lib/safe-smart-account/contracts/common/Enum.sol";
+import { LibClone } from "@solady/utils/LibClone.sol";
+import { ModeLib } from "@erc7579/lib/ModeLib.sol";
+import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
+import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
-import { LibClone } from "lib/solady/src/utils/LibClone.sol";
+import { ModeCode, CallType, ExecType } from "@delegation-framework/utils/Types.sol";
+import { CALLTYPE_SINGLE, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
+
 import { ISafe } from "./interfaces/ISafe.sol";
 import { IDeleGatorCore } from "lib/delegation-framework/src/interfaces/IDeleGatorCore.sol";
 
 contract DelegatorModule is IDeleGatorCore {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
+
+    ////////////////////////////// State //////////////////////////////
+
+    /// @dev The DelegationManager contract that has root access to this contract
+    address public immutable delegationManager;
 
     ////////////////////////////// Errors //////////////////////////////
 
@@ -29,7 +36,6 @@ contract DelegatorModule is IDeleGatorCore {
     /// @dev Error thrown when the execution fails.
     error ExecutionFailed();
 
-
     ////////////////////////////// Modifiers //////////////////////////////
 
     /**
@@ -40,11 +46,6 @@ contract DelegatorModule is IDeleGatorCore {
         if (msg.sender != delegationManager) revert NotDelegationManager();
         _;
     }
-
-    ////////////////////////////// State //////////////////////////////
-
-    /// @dev The DelegationManager contract that has root access to this contract
-    address public immutable delegationManager;
 
     ////////////////////////////// Constructor //////////////////////////////
 
@@ -57,14 +58,6 @@ contract DelegatorModule is IDeleGatorCore {
     }
 
     ////////////////////////////// External Methods //////////////////////////////
-
-    /**
-     * @notice Returns the address of the Safe contract that this module is installed on
-     * @return safeAddress_ The address of the Safe contract
-     */
-    function safe() public view returns (address) {
-        return _getSafeAddressFromArgs();
-    }
 
     /**
      * @notice Executes one call on behalf of this contract,
@@ -101,11 +94,15 @@ contract DelegatorModule is IDeleGatorCore {
         return IERC1271(safe()).isValidSignature(_hash, _signature);
     }
 
-    ////////////////////////////// Internal Methods //////////////////////////////
-
-    function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
-        safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
+    /**
+     * @notice Returns the address of the Safe contract that this module is installed on
+     * @return safeAddress_ The address of the Safe contract
+     */
+    function safe() public view returns (address) {
+        return _getSafeAddressFromArgs();
     }
+
+    ////////////////////////////// Internal Methods //////////////////////////////
 
     /**
      * @notice Executes a call to a target contract through the Safe.
@@ -114,13 +111,14 @@ contract DelegatorModule is IDeleGatorCore {
      * @param _callData The calldata to send to the target contract.
      * @return returnData_ The return data from the call.
      */
-    function _execute(
-        address _target,
-        uint256 _value,
-        bytes calldata _callData
-    ) internal returns (bytes memory returnData_) {
-        (bool success, bytes memory returnData) = ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
+    function _execute(address _target, uint256 _value, bytes calldata _callData) internal returns (bytes memory returnData_) {
+        (bool success, bytes memory returnData) =
+            ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
         if (!success) revert ExecutionFailed();
         return returnData;
+    }
+
+    function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
+        safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
     }
 }

@@ -1,66 +1,63 @@
-## Foundry
+# Safe Delegator Module
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+A Gnosis Safe module that enables delegation capabilities for Safe accounts. This module allows a Safe to act as a delegator, enabling secure and controlled delegation of permissions and actions.
 
-Foundry consists of:
+## Prerequisites
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- Git
 
-## Documentation
+## Installation
 
-https://book.getfoundry.sh/
+1. Clone the repository:
 
-## Usage
+```bash
+git clone https://github.com/your-username/delegator-safe-module.git
+cd delegator-safe-module
+```
+
+2. Install dependencies:
+
+```bash
+forge install
+```
+
+## Development
 
 ### Build
 
-```shell
-$ forge build
+```bash
+forge build
 ```
 
 ### Test
 
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
+```bash
+forge test
 ```
 
 ### Deploy
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+To deploy the module, you'll need to set the following environment variables:
+
+- `DELEGATION_MANAGER`: Address of the delegation manager contract
+- `SAFE_ADDRESS`: Address of the Safe contract
+- `SAFE_OWNER_PRIVATE_KEY`: Private key of the Safe owner
+- `FACTORY_ADDRESS` (optional): Address of an existing factory contract
+
+Then run:
+
+```bash
+forge script script/DeployDelegatorModule.s.sol:DeployDelegatorModule --rpc-url <your_rpc_url> --broadcast
 ```
 
-### Cast
+## Architecture
 
-```shell
-$ cast <subcommand>
-```
+The project consists of two main contracts:
 
-### Help
+1. `DelegatorModule`: The core module contract that implements delegation functionality
+2. `DelegatorModuleFactory`: A factory contract for deploying module instances
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+## License
+
+MIT AND Apache-2.0

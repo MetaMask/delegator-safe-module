@@ -5,8 +5,9 @@ import { Test } from "forge-std/Test.sol";
 import { DelegatorModuleFactory } from "../src/DelegatorModuleFactory.sol";
 import { DelegatorModule } from "../src/DelegatorModule.sol";
 
-contract MockSafe {}
-contract MockDelegationManager {}
+contract MockSafe { }
+
+contract MockDelegationManager { }
 
 contract DelegatorModuleFactoryTest is Test {
     DelegatorModuleFactory public factory;
@@ -38,9 +39,8 @@ contract DelegatorModuleFactoryTest is Test {
         bytes32 salt = keccak256("event_salt");
         vm.expectEmit(true, true, true, false);
         emit ModuleDeployed(address(mockSafe), factory.implementation(), address(0));
-        address module = factory.deploy(address(mockSafe), salt);
-        // The event is checked by expectEmit
+        factory.deploy(address(mockSafe), salt);
     }
 
     event ModuleDeployed(address indexed safe, address indexed implementation, address module);
-} 
+}

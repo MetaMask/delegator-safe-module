@@ -10,17 +10,17 @@ import { DelegatorModuleFactory } from "../src/DelegatorModuleFactory.sol";
  * @title DeployDelegatorModule
  * @notice Script to deploy the DelegatorModule using environment variables for configuration
  * @dev Set DELEGATION_MANAGER, SAFE_ADDRESS, and SAFE_OWNER_PRIVATE_KEY environment variables before running
- * @dev to run the script: $ forge script script/DeployDelegatorModule.s.sol --rpc-url <your_rpc_url> --broadcast
+ * @dev To run the script: $ forge script script/DeployDelegatorModule.s.sol --rpc-url <your_rpc_url> --broadcast
  */
 contract DeployDelegatorModule is Script {
     function run() public returns (address deployedModule) {
-        bytes32 salt = bytes32(uint256(221));
+        bytes32 salt = bytes32(abi.encodePacked(vm.envString("SALT")));
+
         // Load environment variables
         address delegationManager = vm.envAddress("DELEGATION_MANAGER");
         address safeAddress = vm.envAddress("SAFE_ADDRESS");
         uint256 safeOwnerPrivateKey = vm.envUint("SAFE_OWNER_PRIVATE_KEY");
         address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
-
         // Start broadcast for deployment transaction
         vm.startBroadcast(safeOwnerPrivateKey);
 
