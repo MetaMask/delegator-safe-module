@@ -21,6 +21,8 @@ import { DelegatorModule, ISafe } from "../src/DelegatorModule.sol";
 import { MockSafe } from "./mocks/MockSafe.sol";
 import { CounterForTest } from "./mocks/CounterForTest.sol";
 
+/// @notice Tests for the DelegatorModule contract, verifying proper execution of transactions through a Safe
+/// and correct handling of signatures. Tests cover single and batch transactions, error cases, and ERC1271 compatibility.
 contract MockDelegationManager {
     function execute(address target, bytes memory data) external {
         (bool success,) = target.call(data);
@@ -47,11 +49,13 @@ contract DelegatorModuleTest is Test {
         counter = new CounterForTest();
     }
 
+    /// @notice Verifies that the constructor properly sets the delegation manager and safe addresses
     function test_Constructor() public view {
         assertEq(delegatorModule.delegationManager(), address(mockDelegationManager));
         assertEq(delegatorModule.safe(), address(mockSafe));
     }
 
+    /// @notice Tests successful execution of a single transaction through the Safe
     function test_ExecuteFromExecutor_Success() public {
         // Set up mock to return success
         mockSafe.setShouldSucceed(true);
@@ -80,6 +84,7 @@ contract DelegatorModuleTest is Test {
         assertEq(returnData[0], expectedReturnData);
     }
 
+    /// @notice Tests successful execution of multiple transactions in a batch through the Safe
     function test_ExecuteFromExecutor_BatchSuccess() public {
         // Set up mock to return success
         mockSafe.setShouldSucceed(true);
@@ -111,6 +116,7 @@ contract DelegatorModuleTest is Test {
         assertEq(returnData[1], expectedReturnData);
     }
 
+    /// @notice Tests that execution reverts when an unsupported call type is used
     function test_ExecuteFromExecutor_RevertOnUnsupportedCallType() public {
         // Create an unsupported call type
         ModeCode mode = ModeLib.encode(CallType.wrap(0x02), EXECTYPE_DEFAULT, MODE_DEFAULT, ModePayload.wrap(0x00));
@@ -122,6 +128,7 @@ contract DelegatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests that execution reverts when an unsupported execution type is used for single transactions
     function test_ExecuteFromExecutor_RevertOnUnsupportedExecType() public {
         // Create an unsupported exec type
         ModeCode mode = ModeLib.encode(CALLTYPE_SINGLE, ExecType.wrap(0x02), MODE_DEFAULT, ModePayload.wrap(0x00));
@@ -133,6 +140,7 @@ contract DelegatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests that execution reverts when an unsupported execution type is used for batch transactions
     function test_ExecuteFromExecutor_RevertOnUnsupportedExecType_Batch() public {
         // Create an unsupported exec type for batch mode
         ModeCode mode = ModeLib.encode(CALLTYPE_BATCH, ExecType.wrap(0x02), MODE_DEFAULT, ModePayload.wrap(0x00));
@@ -151,6 +159,7 @@ contract DelegatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests that execution reverts when the Safe execution fails
     function test_ExecuteFromExecutor_RevertOnExecutionFailed() public {
         // Set up mock to return failure
         mockSafe.setShouldSucceed(false);
@@ -168,6 +177,7 @@ contract DelegatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests that execution reverts when called by an unauthorized address
     function test_ExecuteFromExecutor_RevertOnUnauthorizedCaller() public {
         // Prepare call parameters
         ModeCode mode = ModeLib.encodeSimpleSingle();
@@ -179,6 +189,7 @@ contract DelegatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests successful execution of a single transaction with ETH value through the Safe
     function test_ExecuteFromExecutor_WithValue() public {
         // Set up mock to return success
         mockSafe.setShouldSucceed(true);
@@ -207,6 +218,7 @@ contract DelegatorModuleTest is Test {
         assertEq(returnData[0], expectedReturnData);
     }
 
+    /// @notice Tests successful execution of multiple transactions with ETH values in a batch through the Safe
     function test_ExecuteFromExecutor_BatchWithValue() public {
         // Set up mock to return success
         mockSafe.setShouldSucceed(true);
@@ -244,6 +256,7 @@ contract DelegatorModuleTest is Test {
         assertEq(returnData[1], expectedReturnData, "Return data[1] is not correct");
     }
 
+    /// @notice Tests that the isValidSignature function correctly validates signatures through the Safe's ERC1271 implementation
     function test_IsValidSignature_ValidSignature() public view {
         // Create a message hash
         bytes32 messageHash = keccak256("test message");
