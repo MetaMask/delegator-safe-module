@@ -7,8 +7,9 @@ import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
-import { ModeCode, CallType, ExecType } from "@delegation-framework/utils/Types.sol";
-import { CALLTYPE_SINGLE, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
+import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
+import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
+import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 
 import { ISafe } from "./interfaces/ISafe.sol";
 import { IDeleGatorCore } from "lib/delegation-framework/src/interfaces/IDeleGatorCore.sol";
@@ -80,14 +81,25 @@ contract DelegatorModule is IDeleGatorCore {
     {
         (CallType callType_, ExecType execType_,,) = _mode.decode();
 
-        // Only support single call type with default execution
-        if (CallType.unwrap(CALLTYPE_SINGLE) != CallType.unwrap(callType_)) revert UnsupportedCallType(callType_);
-        if (ExecType.unwrap(EXECTYPE_DEFAULT) != ExecType.unwrap(execType_)) revert UnsupportedExecType(execType_);
-        // Process single execution directly without additional checks
-        (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
-        returnData_ = new bytes[](1);
-        returnData_[0] = _execute(target_, value_, callData_);
-        return returnData_;
+        // Check if calltype is batch or single
+        if (callType_ == CALLTYPE_BATCH) {
+            // Destructure executionCallData according to batched exec
+            Execution[] calldata executions_ = _executionCalldata.decodeBatch();
+            // check if execType is revert or try
+            if (execType_ == EXECTYPE_DEFAULT) returnData_ = _execute(executions_);
+            else revert UnsupportedExecType(execType_);
+        } else if (callType_ == CALLTYPE_SINGLE) {
+            // Destructure executionCallData according to single exec
+            (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
+            returnData_ = new bytes[](1);
+            if (execType_ == EXECTYPE_DEFAULT) {
+                returnData_[0] = _execute(target_, value_, callData_);
+            } else {
+                revert UnsupportedExecType(execType_);
+            }
+        } else {
+            revert UnsupportedCallType(callType_);
+        }
     }
 
     function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4) {
@@ -116,6 +128,22 @@ contract DelegatorModule is IDeleGatorCore {
             ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
         if (!success) revert ExecutionFailed();
         return returnData;
+    }
+
+    /**
+     * @notice Executes multiple transactions through the Safe in a batch
+     * @dev Iterates through the executions array and calls _execute for each transaction
+     * @param executions Array of Execution structs containing target, value and calldata for each transaction
+     * @return result Array of bytes containing the return data from each transaction
+     */
+    function _execute(Execution[] calldata executions) internal returns (bytes[] memory result) {
+        uint256 length = executions.length;
+        result = new bytes[](length);
+
+        for (uint256 i; i < length; i++) {
+            Execution calldata _exec = executions[i];
+            result[i] = _execute(_exec.target, _exec.value, _exec.callData);
+        }
     }
 
     function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
