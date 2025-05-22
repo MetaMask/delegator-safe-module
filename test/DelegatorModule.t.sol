@@ -14,10 +14,12 @@ import {
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { LibClone } from "@solady/utils/LibClone.sol";
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
-import { DelegatorModule, ISafe } from "../src/DelegatorModule.sol";
+import { DelegatorModule } from "../src/DelegatorModule.sol";
 import { MockSafe } from "./mocks/MockSafe.sol";
 import { CounterForTest } from "./mocks/CounterForTest.sol";
 
@@ -273,5 +275,17 @@ contract DelegatorModuleTest is Test {
 
         // Should return EIP1271_MAGIC_VALUE for valid signatures
         assertEq(result, IERC1271.isValidSignature.selector);
+    }
+
+    /// @notice Tests that the supportsInterface function correctly identifies supported and unsupported interfaces
+    function test_SupportsInterface() public view {
+        // Test supported interfaces
+        assertTrue(delegatorModule.supportsInterface(type(IDeleGatorCore).interfaceId), "Should support IDeleGatorCore");
+        assertTrue(delegatorModule.supportsInterface(type(IERC165).interfaceId), "Should support IERC165");
+        assertTrue(delegatorModule.supportsInterface(type(IERC1271).interfaceId), "Should support IERC1271");
+
+        // Test unsupported interfaces
+        assertFalse(delegatorModule.supportsInterface(0xffffffff), "Should not support 0xffffffff");
+        assertFalse(delegatorModule.supportsInterface(0x12345678), "Should not support random interface");
     }
 }

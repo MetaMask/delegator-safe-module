@@ -7,6 +7,7 @@ import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
@@ -14,7 +15,7 @@ import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.
 import { ISafe } from "./interfaces/ISafe.sol";
 import { IDeleGatorCore } from "lib/delegation-framework/src/interfaces/IDeleGatorCore.sol";
 
-contract DelegatorModule is IDeleGatorCore {
+contract DelegatorModule is IDeleGatorCore, IERC165 {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
 
@@ -102,6 +103,23 @@ contract DelegatorModule is IDeleGatorCore {
         }
     }
 
+    /**
+     * @inheritdoc IERC165
+     * @dev Supports the following interfaces: IDeleGatorCore, IERC165, IERC1271
+     */
+    function supportsInterface(bytes4 _interfaceId) public view virtual override returns (bool) {
+        return _interfaceId == type(IDeleGatorCore).interfaceId || _interfaceId == type(IERC165).interfaceId
+            || _interfaceId == type(IERC1271).interfaceId;
+    }
+
+    /**
+     * @inheritdoc IERC1271
+     * @notice Verifies the signatures of the signers.
+     * @param _hash The hash of the data signed.
+     * @param _signature The signatures of the signers.
+     * @return magicValue_ A bytes4 magic value which is EIP1271_MAGIC_VALUE(0x1626ba7e) if the signature is valid, returns
+     * SIG_VALIDATION_FAILED(0xffffffff) if there is a signature mismatch and reverts (for all other errors).
+     */
     function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4) {
         return IERC1271(safe()).isValidSignature(_hash, _signature);
     }
@@ -146,6 +164,11 @@ contract DelegatorModule is IDeleGatorCore {
         }
     }
 
+    /**
+     * @notice Gets the Safe address from the clone initialization arguments
+     * @dev Uses LibClone to extract the Safe address that was passed during initialization
+     * @return safeAddress_ The address of the Safe contract that this module is installed on
+     */
     function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
         safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
     }
