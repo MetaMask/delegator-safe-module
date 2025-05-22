@@ -9,8 +9,9 @@ import { Enum } from "lib/safe-smart-account/contracts/common/Enum.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { LibClone } from "lib/solady/src/utils/LibClone.sol";
 import { ISafe } from "./interfaces/ISafe.sol";
+import { IDeleGatorCore } from "lib/delegation-framework/src/interfaces/IDeleGatorCore.sol";
 
-contract DelegatorModule {
+contract DelegatorModule is IDeleGatorCore {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
 
