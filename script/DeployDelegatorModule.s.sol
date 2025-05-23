@@ -44,7 +44,12 @@ contract DeployDelegatorModule is Script {
         console2.log("DelegatorModule clone deployed at:", deployedModule);
         console2.log("Configured with DelegationManager:", delegationManager);
         console2.log("Configured with Safe Address:", safeAddress);
-        console2.log("Module enabled on Safe");
+        console2.log("Module Deployed for use with Safe.");
+        console2.log("******************************************");
+        console2.log("Enable the module in the Safe UI using the transaction builder.");
+        console2.log("set the contract to call to:", safeAddress);
+        console2.log("set the method to call to: enableModule");
+        console2.log("set the moduleAddress parameter to:", deployedModule);
 
         return deployedModule;
     }
