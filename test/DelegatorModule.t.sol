@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 pragma solidity ^0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
-import {DelegatorModule, ISafe} from "../src/DelegatorModule.sol";
-import {ModeCode, CallType, ExecType} from "lib/delegation-framework/src/utils/Types.sol";
-import {ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT, MODE_DEFAULT, ModeSelector, ModePayload} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ModeLib.sol";
-import {ExecutionLib} from "lib/delegation-framework/lib/erc7579-implementation/src/lib/ExecutionLib.sol";
-import {Enum} from "lib/safe-smart-account/contracts/common/Enum.sol";
+import { Test, console } from "forge-std/Test.sol";
+import { ModeLib, CALLTYPE_SINGLE, EXECTYPE_DEFAULT, MODE_DEFAULT, ModeSelector, ModePayload } from "@erc7579/lib/ModeLib.sol";
+import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
+import { Enum } from "@safe-smart-account/common/Enum.sol";
+import { LibClone } from "@solady/utils/LibClone.sol";
+import { ModeCode, CallType, ExecType } from "@delegation-framework/utils/Types.sol";
+
+import { DelegatorModule, ISafe } from "../src/DelegatorModule.sol";
 
 contract MockSafe is ISafe {
     bool public shouldSucceed = true;
@@ -21,7 +23,10 @@ contract MockSafe is ISafe {
         uint256 value,
         bytes memory data,
         Enum.Operation operation
-    ) external returns (bool success) {
+    )
+        external
+        returns (bool success)
+    {
         lastTarget = to;
         lastValue = value;
         lastCallData = data;
@@ -34,7 +39,10 @@ contract MockSafe is ISafe {
         uint256 value,
         bytes memory data,
         Enum.Operation operation
-    ) external returns (bool success, bytes memory returnData_) {
+    )
+        external
+        returns (bool success, bytes memory returnData_)
+    {
         lastTarget = to;
         lastValue = value;
         lastCallData = data;
@@ -79,13 +87,19 @@ contract DelegatorModuleTest is Test {
     function setUp() public {
         mockSafe = new MockSafe();
         mockDelegationManager = new MockDelegationManager();
-        delegatorModule = new DelegatorModule(address(mockDelegationManager), address(mockSafe));
+        // Deploy implementation with manager
+        DelegatorModule implementation = new DelegatorModule(address(mockDelegationManager));
+        // Deploy clone with safe as immutable arg
+        bytes memory args = abi.encodePacked(address(mockSafe));
+        bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
+        address clone = LibClone.cloneDeterministic(address(implementation), args, salt);
+        delegatorModule = DelegatorModule(clone);
         counter = new CounterForTest();
     }
 
-    function test_Constructor() public {
+    function test_Constructor() public view {
         assertEq(delegatorModule.delegationManager(), address(mockDelegationManager));
-        assertEq(address(delegatorModule.safe()), address(mockSafe));
+        assertEq(delegatorModule.safe(), address(mockSafe));
     }
 
     function test_ExecuteFromExecutor_Success() public {
