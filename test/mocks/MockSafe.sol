@@ -87,10 +87,8 @@ contract MockSafe is ISafe, IERC1271 {
     }
 
     /// @notice Implements ERC1271 signature validation
-    /// @param hash The hash to be validated
-    /// @param signature The signature to validate
     /// @return magicValue The ERC1271 magic value if the signature is valid
-    function isValidSignature(bytes32 hash, bytes memory signature) external view returns (bytes4 magicValue) {
+    function isValidSignature(bytes32, bytes memory) external view returns (bytes4 magicValue) {
         return IERC1271.isValidSignature.selector;
     }
 }
