@@ -4,7 +4,6 @@ pragma solidity ^0.8.13;
 
 import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { ISafe } from "../../src/interfaces/ISafe.sol";
-import { console2 } from "forge-std/console2.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 /// @title MockSafe

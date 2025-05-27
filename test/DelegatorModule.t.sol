@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 pragma solidity ^0.8.13;
 
-import { Test, console } from "forge-std/Test.sol";
-import {
-    ModeLib,
-    CALLTYPE_SINGLE,
-    CALLTYPE_BATCH,
-    EXECTYPE_DEFAULT,
-    MODE_DEFAULT,
-    ModeSelector,
-    ModePayload
-} from "@erc7579/lib/ModeLib.sol";
+import { Test } from "forge-std/Test.sol";
+import { ModeLib, CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT, MODE_DEFAULT, ModePayload } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { LibClone } from "@solady/utils/LibClone.sol";

@@ -2,18 +2,17 @@
 
 pragma solidity ^0.8.13;
 
+import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { LibClone } from "@solady/utils/LibClone.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
-import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
-import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 
 import { ISafe } from "./interfaces/ISafe.sol";
-import { IDeleGatorCore } from "lib/delegation-framework/src/interfaces/IDeleGatorCore.sol";
 
 contract DelegatorModule is IDeleGatorCore, IERC165 {
     using ModeLib for ModeCode;
@@ -104,15 +103,6 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     }
 
     /**
-     * @inheritdoc IERC165
-     * @dev Supports the following interfaces: IDeleGatorCore, IERC165, IERC1271
-     */
-    function supportsInterface(bytes4 _interfaceId) public view virtual override returns (bool) {
-        return _interfaceId == type(IDeleGatorCore).interfaceId || _interfaceId == type(IERC165).interfaceId
-            || _interfaceId == type(IERC1271).interfaceId;
-    }
-
-    /**
      * @inheritdoc IERC1271
      * @notice Verifies the signatures of the signers.
      * @param _hash The hash of the data signed.
@@ -130,6 +120,15 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
      */
     function safe() public view returns (address) {
         return _getSafeAddressFromArgs();
+    }
+
+    /**
+     * @inheritdoc IERC165
+     * @dev Supports the following interfaces: IDeleGatorCore, IERC165, IERC1271
+     */
+    function supportsInterface(bytes4 _interfaceId) public view virtual override returns (bool) {
+        return _interfaceId == type(IDeleGatorCore).interfaceId || _interfaceId == type(IERC165).interfaceId
+            || _interfaceId == type(IERC1271).interfaceId;
     }
 
     ////////////////////////////// Internal Methods //////////////////////////////
