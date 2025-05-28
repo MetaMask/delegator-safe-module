@@ -5,6 +5,9 @@ deploy.log
 cache/
 out/
 
+report/
+
+
 # Ignores development broadcast logs
 #!/broadcast
 /broadcast/*/31337/
@@ -15,3 +18,11 @@ docs/
 
 # Dotenv file
 .env
+
+# Files
+*.log
+.DS_Store
+
+# Coverage
+coverage/
+filtered-lcov.info

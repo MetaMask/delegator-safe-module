@@ -2,18 +2,19 @@
 
 pragma solidity ^0.8.13;
 
+import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { LibClone } from "@solady/utils/LibClone.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
-import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
-import { ModeCode, CallType, ExecType } from "@delegation-framework/utils/Types.sol";
-import { CALLTYPE_SINGLE, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
+import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
+import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
+import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 
 import { ISafe } from "./interfaces/ISafe.sol";
-import { IDeleGatorCore } from "lib/delegation-framework/src/interfaces/IDeleGatorCore.sol";
 
-contract DelegatorModule is IDeleGatorCore {
+contract DelegatorModule is IDeleGatorCore, IERC165 {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
 
@@ -80,16 +81,35 @@ contract DelegatorModule is IDeleGatorCore {
     {
         (CallType callType_, ExecType execType_,,) = _mode.decode();
 
-        // Only support single call type with default execution
-        if (CallType.unwrap(CALLTYPE_SINGLE) != CallType.unwrap(callType_)) revert UnsupportedCallType(callType_);
-        if (ExecType.unwrap(EXECTYPE_DEFAULT) != ExecType.unwrap(execType_)) revert UnsupportedExecType(execType_);
-        // Process single execution directly without additional checks
-        (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
-        returnData_ = new bytes[](1);
-        returnData_[0] = _execute(target_, value_, callData_);
-        return returnData_;
+        // Check if calltype is batch or single
+        if (callType_ == CALLTYPE_BATCH) {
+            // Destructure executionCallData according to batched exec
+            Execution[] calldata executions_ = _executionCalldata.decodeBatch();
+            // check if execType is revert or try
+            if (execType_ == EXECTYPE_DEFAULT) returnData_ = _execute(executions_);
+            else revert UnsupportedExecType(execType_);
+        } else if (callType_ == CALLTYPE_SINGLE) {
+            // Destructure executionCallData according to single exec
+            (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
+            returnData_ = new bytes[](1);
+            if (execType_ == EXECTYPE_DEFAULT) {
+                returnData_[0] = _execute(target_, value_, callData_);
+            } else {
+                revert UnsupportedExecType(execType_);
+            }
+        } else {
+            revert UnsupportedCallType(callType_);
+        }
     }
 
+    /**
+     * @inheritdoc IERC1271
+     * @notice Verifies the signatures of the signers.
+     * @param _hash The hash of the data signed.
+     * @param _signature The signatures of the signers.
+     * @return magicValue_ A bytes4 magic value which is EIP1271_MAGIC_VALUE(0x1626ba7e) if the signature is valid, returns
+     * SIG_VALIDATION_FAILED(0xffffffff) if there is a signature mismatch and reverts (for all other errors).
+     */
     function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4) {
         return IERC1271(safe()).isValidSignature(_hash, _signature);
     }
@@ -100,6 +120,15 @@ contract DelegatorModule is IDeleGatorCore {
      */
     function safe() public view returns (address) {
         return _getSafeAddressFromArgs();
+    }
+
+    /**
+     * @inheritdoc IERC165
+     * @dev Supports the following interfaces: IDeleGatorCore, IERC165, IERC1271
+     */
+    function supportsInterface(bytes4 _interfaceId) public view virtual override returns (bool) {
+        return _interfaceId == type(IDeleGatorCore).interfaceId || _interfaceId == type(IERC165).interfaceId
+            || _interfaceId == type(IERC1271).interfaceId;
     }
 
     ////////////////////////////// Internal Methods //////////////////////////////
@@ -118,6 +147,27 @@ contract DelegatorModule is IDeleGatorCore {
         return returnData;
     }
 
+    /**
+     * @notice Executes multiple transactions through the Safe in a batch
+     * @dev Iterates through the executions array and calls _execute for each transaction
+     * @param executions Array of Execution structs containing target, value and calldata for each transaction
+     * @return result Array of bytes containing the return data from each transaction
+     */
+    function _execute(Execution[] calldata executions) internal returns (bytes[] memory result) {
+        uint256 length = executions.length;
+        result = new bytes[](length);
+
+        for (uint256 i; i < length; i++) {
+            Execution calldata _exec = executions[i];
+            result[i] = _execute(_exec.target, _exec.value, _exec.callData);
+        }
+    }
+
+    /**
+     * @notice Gets the Safe address from the clone initialization arguments
+     * @dev Uses LibClone to extract the Safe address that was passed during initialization
+     * @return safeAddress_ The address of the Safe contract that this module is installed on
+     */
     function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
         safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
     }

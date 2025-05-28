@@ -1,6 +1,6 @@
-# Safe Delegator Module
+# Delegator Safe Module
 
-A Gnosis Safe module that enables delegation capabilities for Safe accounts. This module allows a Safe to act as a delegator, enabling secure and controlled delegation of permissions and actions.
+A Gnosis Safe module that enables delegation capabilities via [Delegation Framework](https://github.com/MetaMask/delegation-framework) for Safe accounts. This module allows a Safe to act as a Delegator, enabling secure and controlled delegation of permissions and actions.
 
 ## Prerequisites
 
@@ -36,13 +36,24 @@ forge build
 forge test
 ```
 
+### Test Coverage
+
+To run the test coverage report:
+
+```bash
+cd script
+./coverage
+```
+
+This will open a browser tab with an HTML report showing the coverage percentage and covered lines.
+
 ### Deploy
 
 To deploy the module, you'll need to set the following environment variables:
 
 - `DELEGATION_MANAGER`: Address of the delegation manager contract
 - `SAFE_ADDRESS`: Address of the Safe contract
-- `SAFE_OWNER_PRIVATE_KEY`: Private key of the Safe owner
+- `DEPLOYER_PRIVATE_KEY`: Private key deployer
 - `FACTORY_ADDRESS` (optional): Address of an existing factory contract
 
 Then run:
