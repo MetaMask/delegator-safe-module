@@ -1,3 +1,8 @@
+> [!WARNING]
+> These contracts have **not been audited**.  
+> **Do not use on production mainnet chains**.  
+> Use only for testing or development purposes at your own risk.
+
 # Delegator Safe Module
 
 A Gnosis Safe module that enables delegation capabilities via [Delegation Framework](https://github.com/MetaMask/delegation-framework) for Safe accounts. This module allows a Safe to act as a Delegator, enabling secure and controlled delegation of permissions and actions.
