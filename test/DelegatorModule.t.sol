@@ -13,7 +13,7 @@ import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/u
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 import { DelegatorModule } from "../src/DelegatorModule.sol";
-import { MockSafe } from "./mocks/MockSafe.sol";
+import { OwnableMockSafe } from "./mocks/OwnableMockSafe.sol";
 import { CounterForTest } from "./mocks/CounterForTest.sol";
 
 /// @notice Tests for the DelegatorModule contract, verifying proper execution of transactions through a Safe
@@ -27,12 +27,14 @@ contract MockDelegationManager {
 
 contract DelegatorModuleTest is Test {
     DelegatorModule public delegatorModule;
-    MockSafe public mockSafe;
+    OwnableMockSafe public mockSafe;
     MockDelegationManager public mockDelegationManager;
     CounterForTest public counter;
+    address public safeOwner;
 
     function setUp() public {
-        mockSafe = new MockSafe();
+        safeOwner = makeAddr("safeOwner");
+        mockSafe = new OwnableMockSafe(safeOwner);
         mockDelegationManager = new MockDelegationManager();
         DelegatorModule implementation = new DelegatorModule(address(mockDelegationManager));
         bytes memory args = abi.encodePacked(address(mockSafe));
@@ -40,6 +42,10 @@ contract DelegatorModuleTest is Test {
         address clone = LibClone.cloneDeterministic(address(implementation), args, salt);
         delegatorModule = DelegatorModule(clone);
         counter = new CounterForTest();
+
+        // Enable the module on the Safe
+        vm.prank(safeOwner);
+        mockSafe.enableModule(address(delegatorModule));
     }
 
     ////////////////////////////// Constructor & View Functions //////////////////////////////
@@ -51,10 +57,23 @@ contract DelegatorModuleTest is Test {
     }
 
     /// @notice Tests that isValidSignature correctly validates signatures through the Safe's ERC1271 implementation
-    function test_IsValidSignature_ValidSignature() public view {
+    function test_IsValidSignature_ValidSignature() public {
+        // Create a valid signature from the safe owner
+        (address signer, uint256 signerPk) = makeAddrAndKey("signer");
+
+        // Create a new safe and module for this test
+        OwnableMockSafe testSafe = new OwnableMockSafe(signer);
+        address testModule = LibClone.cloneDeterministic(
+            address(new DelegatorModule(address(mockDelegationManager))), abi.encodePacked(address(testSafe)), keccak256("test")
+        );
+
+        // Create message and sign it
         bytes32 messageHash = keccak256("test message");
-        bytes memory signature = abi.encodePacked(bytes32(uint256(0x1234)), bytes32(uint256(0x5678)), bytes1(0x1b));
-        bytes4 result = delegatorModule.isValidSignature(messageHash, signature);
+        bytes32 ethSignedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, ethSignedHash);
+
+        // Verify the signature through the module
+        bytes4 result = DelegatorModule(testModule).isValidSignature(messageHash, abi.encodePacked(r, s, v));
         assertEq(result, IERC1271.isValidSignature.selector);
     }
 
@@ -71,16 +90,15 @@ contract DelegatorModuleTest is Test {
 
     /// @notice Tests successful execution of a single transaction through the Safe
     function test_ExecuteFromExecutor_Success() public {
-        // Set up mock to return success
-        mockSafe.setShouldSucceed(true);
-        bytes memory expectedReturnData = abi.encode(uint256(42));
-        mockSafe.setReturnData(expectedReturnData);
+        // Setup: increment counter first
+        counter.increment();
+        assertEq(counter.count(), 1);
 
-        // Prepare call parameters
+        // Prepare call parameters to read the count
         ModeCode mode = ModeLib.encodeSimpleSingle();
         address target = address(counter);
         uint256 value = 0;
-        bytes memory callData = abi.encodeWithSelector(CounterForTest.increment.selector);
+        bytes memory callData = abi.encodeWithSelector(CounterForTest.getCount.selector);
         bytes memory executionCalldata = ExecutionLib.encodeSingle(target, value, callData);
 
         // Call executeFromExecutor as the delegation manager
@@ -93,52 +111,59 @@ contract DelegatorModuleTest is Test {
         assertEq(mockSafe.lastCallData(), callData);
         assertEq(uint256(mockSafe.lastOperation()), uint256(Enum.Operation.Call));
 
-        // Verify the returned data
+        // Verify the returned data contains the count value
         assertEq(returnData.length, 1);
-        assertEq(returnData[0], expectedReturnData);
+        uint256 returnedCount = abi.decode(returnData[0], (uint256));
+        assertEq(returnedCount, 1);
     }
 
     /// @notice Tests successful execution of multiple transactions in a batch through the Safe
     function test_ExecuteFromExecutor_BatchSuccess() public {
-        // Set up mock to return success
-        mockSafe.setShouldSucceed(true);
-        bytes memory expectedReturnData = abi.encode(uint256(42));
-        mockSafe.setReturnData(expectedReturnData);
+        // Setup: increment counter twice
+        counter.increment();
+        counter.increment();
+        assertEq(counter.count(), 2);
 
-        // Prepare batch call parameters
+        // Prepare batch call parameters - both read the count
         ModeCode mode = ModeLib.encodeSimpleBatch();
         Execution[] memory executions = new Execution[](2);
         executions[0] =
-            Execution({ target: address(counter), value: 0, callData: abi.encodeWithSelector(CounterForTest.increment.selector) });
+            Execution({ target: address(counter), value: 0, callData: abi.encodeWithSelector(CounterForTest.getCount.selector) });
         executions[1] =
-            Execution({ target: address(counter), value: 0, callData: abi.encodeWithSelector(CounterForTest.increment.selector) });
+            Execution({ target: address(counter), value: 0, callData: abi.encodeWithSelector(CounterForTest.getCount.selector) });
         bytes memory executionCalldata = ExecutionLib.encodeBatch(executions);
 
         // Call executeFromExecutor as the delegation manager
         vm.prank(address(mockDelegationManager));
         bytes[] memory returnData = delegatorModule.executeFromExecutor(mode, executionCalldata);
 
-        // Verify that the Safe received the correct parameters for both calls
+        // Verify that the Safe received the correct parameters for the last call
         assertEq(mockSafe.lastTarget(), address(counter));
         assertEq(mockSafe.lastValue(), 0);
-        assertEq(mockSafe.lastCallData(), abi.encodeWithSelector(CounterForTest.increment.selector));
+        assertEq(mockSafe.lastCallData(), abi.encodeWithSelector(CounterForTest.getCount.selector));
         assertEq(uint256(mockSafe.lastOperation()), uint256(Enum.Operation.Call));
 
-        // Verify the returned data
+        // Verify the returned data contains correct values
         assertEq(returnData.length, 2);
-        assertEq(returnData[0], expectedReturnData);
-        assertEq(returnData[1], expectedReturnData);
+        uint256 returnedCount1 = abi.decode(returnData[0], (uint256));
+        uint256 returnedCount2 = abi.decode(returnData[1], (uint256));
+        assertEq(returnedCount1, 2);
+        assertEq(returnedCount2, 2);
     }
 
     /// @notice Tests successful execution of a single transaction with ETH value through the Safe
     function test_ExecuteFromExecutor_WithValue() public {
-        mockSafe.setShouldSucceed(true);
-        bytes memory expectedReturnData = abi.encode(uint256(42));
-        mockSafe.setReturnData(expectedReturnData);
+        // Fund the Safe with ETH
+        vm.deal(address(mockSafe), 10 ether);
 
+        // Verify initial state
+        assertEq(counter.count(), 0);
+        assertEq(address(counter).balance, 0);
+
+        // Execute increment with ETH value and get return data (increment returns nothing but we can still verify)
         ModeCode mode = ModeLib.encodeSimpleSingle();
         address target = address(counter);
-        uint256 value = 1 ether;
+        uint256 value = 2 ether;
         bytes memory callData = abi.encodeWithSelector(CounterForTest.increment.selector);
         bytes memory executionCalldata = ExecutionLib.encodeSingle(target, value, callData);
 
@@ -149,18 +174,27 @@ contract DelegatorModuleTest is Test {
         assertEq(mockSafe.lastValue(), value);
         assertEq(mockSafe.lastCallData(), callData);
         assertEq(uint256(mockSafe.lastOperation()), uint256(Enum.Operation.Call));
+
+        // Verify the transaction executed
         assertEq(returnData.length, 1);
-        assertEq(returnData[0], expectedReturnData);
+        assertEq(counter.count(), 1);
+
+        // Verify ETH was sent
+        assertEq(address(counter).balance, 2 ether);
     }
 
     /// @notice Tests successful execution of multiple transactions with ETH values in a batch through the Safe
     function test_ExecuteFromExecutor_BatchWithValue() public {
-        mockSafe.setShouldSucceed(true);
-        bytes memory expectedReturnData = abi.encode(uint256(42));
-        mockSafe.setReturnData(expectedReturnData);
+        // Fund the Safe with ETH
+        vm.deal(address(mockSafe), 10 ether);
 
+        // Verify initial state
+        assertEq(counter.count(), 0);
+        assertEq(address(counter).balance, 0);
+
+        // Execute batch with value transfers - mix of increment and getCount
         ModeCode mode = ModeLib.encodeSimpleBatch();
-        Execution[] memory executions = new Execution[](2);
+        Execution[] memory executions = new Execution[](3);
         executions[0] = Execution({
             target: address(counter),
             value: 1 ether,
@@ -171,18 +205,28 @@ contract DelegatorModuleTest is Test {
             value: 2 ether,
             callData: abi.encodeWithSelector(CounterForTest.increment.selector)
         });
+        executions[2] =
+            Execution({ target: address(counter), value: 0, callData: abi.encodeWithSelector(CounterForTest.getCount.selector) });
         bytes memory executionCalldata = ExecutionLib.encodeBatch(executions);
 
         vm.prank(address(mockDelegationManager));
         bytes[] memory returnData = delegatorModule.executeFromExecutor(mode, executionCalldata);
 
         assertEq(mockSafe.lastTarget(), address(counter));
-        assertEq(mockSafe.lastValue(), 2 ether);
-        assertEq(mockSafe.lastCallData(), abi.encodeWithSelector(CounterForTest.increment.selector));
+        assertEq(mockSafe.lastValue(), 0);
+        assertEq(mockSafe.lastCallData(), abi.encodeWithSelector(CounterForTest.getCount.selector));
         assertEq(uint256(mockSafe.lastOperation()), uint256(Enum.Operation.Call));
-        assertEq(returnData.length, 2);
-        assertEq(returnData[0], expectedReturnData);
-        assertEq(returnData[1], expectedReturnData);
+
+        // Verify the returned data
+        assertEq(returnData.length, 3);
+        // First two calls return nothing (increment)
+        // Third call returns the count
+        uint256 returnedCount = abi.decode(returnData[2], (uint256));
+        assertEq(returnedCount, 2);
+
+        // Verify both transactions were executed and ETH was sent
+        assertEq(counter.count(), 2);
+        assertEq(address(counter).balance, 3 ether); // 1 + 2 ether
     }
 
     /// @notice Tests that execution reverts when called by an unauthorized address

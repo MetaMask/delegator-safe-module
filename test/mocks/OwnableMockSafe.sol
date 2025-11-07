@@ -9,8 +9,8 @@ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 /// @title OwnableMockSafe
-/// @notice A mock Safe contract with ownership and actual transaction execution
-/// @dev Implements ISafe and IERC1271 with an owner who can sign messages
+/// @notice A comprehensive mock Safe contract combining ownership, execution, and testing helpers
+/// @dev Implements ISafe and IERC1271 with both real execution and controllable mock behavior
 contract OwnableMockSafe is ISafe, IERC1271 {
     using MessageHashUtils for bytes32;
 
@@ -21,6 +21,21 @@ contract OwnableMockSafe is ISafe, IERC1271 {
 
     /// @notice Mapping to track which modules are enabled
     mapping(address => bool) public isModuleEnabled;
+
+    /// @notice Controls whether transactions should succeed or fail (for testing)
+    bool public shouldSucceed = true;
+
+    /// @notice Stores the last transaction's calldata (for testing)
+    bytes public lastCallData;
+
+    /// @notice Stores the last transaction's target address (for testing)
+    address public lastTarget;
+
+    /// @notice Stores the last transaction's value (for testing)
+    uint256 public lastValue;
+
+    /// @notice Stores the last transaction's operation type (for testing)
+    Enum.Operation public lastOperation;
 
     ////////////////////////////// Events //////////////////////////////
 
@@ -45,7 +60,7 @@ contract OwnableMockSafe is ISafe, IERC1271 {
         emit ModuleEnabled(_module);
     }
 
-    /// @notice Simulates executing a transaction from a module
+    /// @notice Executes a transaction from a module
     /// @param to The target address for the transaction
     /// @param value The amount of ETH to send with the transaction
     /// @param data The calldata for the transaction
@@ -62,8 +77,20 @@ contract OwnableMockSafe is ISafe, IERC1271 {
     {
         require(isModuleEnabled[msg.sender], "OwnableMockSafe: caller is not an enabled module");
 
+        // Track transaction details for testing
+        lastTarget = to;
+        lastValue = value;
+        lastCallData = data;
+        lastOperation = operation;
+
         emit ExecutedTransaction(to, value, data, operation);
 
+        // If shouldSucceed is false, return false immediately (for testing failures)
+        if (!shouldSucceed) {
+            return false;
+        }
+
+        // Otherwise, execute the actual transaction
         if (operation == Enum.Operation.Call) {
             (success,) = to.call{ value: value }(data);
         } else if (operation == Enum.Operation.DelegateCall) {
@@ -93,8 +120,20 @@ contract OwnableMockSafe is ISafe, IERC1271 {
     {
         require(isModuleEnabled[msg.sender], "OwnableMockSafe: caller is not an enabled module");
 
+        // Track transaction details for testing
+        lastTarget = to;
+        lastValue = value;
+        lastCallData = data;
+        lastOperation = operation;
+
         emit ExecutedTransaction(to, value, data, operation);
 
+        // If shouldSucceed is false, return false immediately (for testing failures)
+        if (!shouldSucceed) {
+            return (false, "");
+        }
+
+        // Otherwise, execute the actual transaction
         if (operation == Enum.Operation.Call) {
             (success, returnData_) = to.call{ value: value }(data);
         } else if (operation == Enum.Operation.DelegateCall) {
@@ -120,6 +159,14 @@ contract OwnableMockSafe is ISafe, IERC1271 {
         }
 
         return 0xffffffff;
+    }
+
+    ////////////////////////////// Testing Helpers //////////////////////////////
+
+    /// @notice Sets whether transactions should succeed or fail (for testing)
+    /// @param _shouldSucceed The new value for shouldSucceed
+    function setShouldSucceed(bool _shouldSucceed) external {
+        shouldSucceed = _shouldSucceed;
     }
 
     /// @notice Allows the Safe to receive ETH

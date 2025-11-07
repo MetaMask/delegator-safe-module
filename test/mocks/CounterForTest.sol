@@ -13,8 +13,8 @@ contract CounterForTest {
     error CounterError(string message);
 
     /// @notice Increments the counter by 1
-    /// @dev External function that increases count by 1
-    function increment() external {
+    /// @dev External function that increases count by 1, can receive ETH
+    function increment() external payable {
         count += 1;
     }
 
@@ -30,4 +30,7 @@ contract CounterForTest {
     function revertWithMessage() external pure {
         revert CounterError("Test revert message");
     }
+
+    /// @notice Allows the contract to receive ETH
+    receive() external payable { }
 }
