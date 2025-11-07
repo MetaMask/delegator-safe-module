@@ -244,6 +244,10 @@ contract DelegatorModuleIntegrationTest is Test {
     function test_SafeDisablesAndEnablesDelegation() public {
         // Create and sign delegation
         Delegation memory delegation = _createAndSignDelegation();
+        bytes32 delegationHash = EncoderLib._getDelegationHash(delegation);
+
+        // Verify delegation is not disabled initially
+        assertFalse(delegationManager.disabledDelegations(delegationHash));
 
         // Test that delegation works initially
         Execution memory execution = Execution({
@@ -278,6 +282,9 @@ contract DelegatorModuleIntegrationTest is Test {
         vm.prank(address(safe));
         delegatorModule.execute(disableMode, disableCalldata);
 
+        // Verify delegation is now disabled
+        assertTrue(delegationManager.disabledDelegations(delegationHash));
+
         // Try to redeem again - should fail
         execution.callData = abi.encodeWithSelector(IERC20.transfer.selector, recipient, 50 ether);
         executionCallDatas[0] = ExecutionLib.encodeSingle(execution.target, execution.value, execution.callData);
@@ -294,6 +301,9 @@ contract DelegatorModuleIntegrationTest is Test {
 
         vm.prank(address(safe));
         delegatorModule.execute(enableMode, enableCalldata);
+
+        // Verify delegation is no longer disabled
+        assertFalse(delegationManager.disabledDelegations(delegationHash));
 
         // Redeem again - should work now
         vm.prank(delegate);
@@ -359,11 +369,8 @@ contract DelegatorModuleIntegrationTest is Test {
 
         // Safe uses execute to recover tokens from module
         ModeCode mode = ModeLib.encodeSimpleSingle();
-        bytes memory calldata_ = ExecutionLib.encodeSingle(
-            address(token),
-            0,
-            abi.encodeWithSelector(IERC20.transfer.selector, recipient, 300 ether)
-        );
+        bytes memory calldata_ =
+            ExecutionLib.encodeSingle(address(token), 0, abi.encodeWithSelector(IERC20.transfer.selector, recipient, 300 ether));
 
         // Safe calls module.execute which executes directly (module → token)
         vm.prank(address(safe));
@@ -374,19 +381,16 @@ contract DelegatorModuleIntegrationTest is Test {
         assertEq(token.balanceOf(recipient), 300 ether);
     }
 
-    /// @notice Tests using a Safe as the delegate (not just delegator)
-    /// Safe1 (delegator) delegates to Safe2 (delegate)
-    function test_SafeAsDelegate() public {
-        // Create a second safe to act as delegate
+    /// @notice Tests module-to-module delegation: Safe1's module → Safe2's module
+    /// The modules are the ones in the delegation, not the Safes directly
+    function test_ModuleToModuleDelegation() public {
+        // Create a second safe with its own module
         OwnableMockSafe delegateSafe = new OwnableMockSafe(delegate);
-        
+
         // Deploy module for delegate safe
         bytes32 salt2 = keccak256("delegate-safe");
-        address delegateClone = LibClone.cloneDeterministic(
-            address(delegatorModuleImplementation),
-            abi.encodePacked(address(delegateSafe)),
-            salt2
-        );
+        address delegateClone =
+            LibClone.cloneDeterministic(address(delegatorModuleImplementation), abi.encodePacked(address(delegateSafe)), salt2);
         DelegatorModule delegateSafeModule = DelegatorModule(delegateClone);
 
         // Enable module on delegate safe
@@ -394,8 +398,8 @@ contract DelegatorModuleIntegrationTest is Test {
         delegateSafe.enableModule(address(delegateSafeModule));
 
         // Create delegation where:
-        // - delegator = first Safe's module
-        // - delegate = second Safe's module
+        // - delegator = Safe1's module
+        // - delegate = Safe2's module
         Delegation memory delegation = Delegation({
             delegate: address(delegateSafeModule),
             delegator: address(delegatorModule),
@@ -405,17 +409,14 @@ contract DelegatorModuleIntegrationTest is Test {
             signature: hex""
         });
 
-        // Sign with first safe's owner
+        // Sign with Safe1's owner
         bytes32 delegationHash = EncoderLib._getDelegationHash(delegation);
-        bytes32 typedDataHash = MessageHashUtils.toTypedDataHash(
-            delegationManager.getDomainHash(),
-            delegationHash
-        );
+        bytes32 typedDataHash = MessageHashUtils.toTypedDataHash(delegationManager.getDomainHash(), delegationHash);
         bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(typedDataHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(safeOwnerPrivateKey, ethSignedHash);
         delegation.signature = abi.encodePacked(r, s, v);
 
-        // Delegate safe (Safe2) redeems to transfer tokens from Safe1
+        // Safe2's module redeems to transfer tokens from Safe1
         Execution memory execution = Execution({
             target: address(token),
             value: 0,
@@ -434,13 +435,70 @@ contract DelegatorModuleIntegrationTest is Test {
         ModeCode[] memory modes = new ModeCode[](1);
         modes[0] = ModeLib.encodeSimpleSingle();
 
-        // Delegate safe module redeems the delegation
+        // Safe2's module redeems the delegation
         vm.prank(address(delegateSafeModule));
         delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
 
         // Verify transfer from Safe1
         assertEq(token.balanceOf(address(safe)), 850 ether);
         assertEq(token.balanceOf(recipient), 150 ether);
+    }
+
+    /// @notice Tests Safe address as delegate: Safe1's module delegates directly to Safe2 address (no module)
+    /// The Safe itself acts as the delegate, not through a module
+    /// This works because the Safe only needs to validate signatures (ERC1271), not execute
+    function test_SafeAddressAsDelegate() public {
+        // Create a second safe to act as delegate (no module needed)
+        OwnableMockSafe delegateSafe = new OwnableMockSafe(delegate);
+
+        // Create delegation where:
+        // - delegator = Safe1's module
+        // - delegate = Safe2 address directly (not its module)
+        Delegation memory delegation = Delegation({
+            delegate: address(delegateSafe),
+            delegator: address(delegatorModule),
+            authority: ROOT_AUTHORITY,
+            caveats: new Caveat[](0),
+            salt: 0,
+            signature: hex""
+        });
+
+        // Sign with Safe1's owner
+        bytes32 delegationHash = EncoderLib._getDelegationHash(delegation);
+        bytes32 typedDataHash = MessageHashUtils.toTypedDataHash(delegationManager.getDomainHash(), delegationHash);
+        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(typedDataHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(safeOwnerPrivateKey, ethSignedHash);
+        delegation.signature = abi.encodePacked(r, s, v);
+
+        // Safe2 (the Safe itself, not a module) redeems the delegation
+        // This works! The Safe is just the delegate (msg.sender)
+        // The execution happens on Safe1's module (the delegator)
+        Execution memory execution = Execution({
+            target: address(token),
+            value: 0,
+            callData: abi.encodeWithSelector(IERC20.transfer.selector, recipient, 200 ether)
+        });
+
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeSingle(execution.target, execution.value, execution.callData);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleSingle();
+
+        // Safe2 address directly redeems the delegation
+        // The execution still goes through Safe1's module (the delegator)
+        vm.prank(address(delegateSafe));
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+
+        // Verify transfer from Safe1 (tokens came from Safe1, not Safe2)
+        assertEq(token.balanceOf(address(safe)), 800 ether);
+        assertEq(token.balanceOf(recipient), 200 ether);
     }
 
     /// @notice Tests redelegation: Safe1 → Safe2 → EOA delegate
@@ -450,12 +508,10 @@ contract DelegatorModuleIntegrationTest is Test {
         uint256 safe2OwnerPk = 0xABCD;
         address safe2OwnerAddr = vm.addr(safe2OwnerPk);
         OwnableMockSafe safe2 = new OwnableMockSafe(safe2OwnerAddr);
-        
+
         // Deploy module for safe2
         address safe2Clone = LibClone.cloneDeterministic(
-            address(delegatorModuleImplementation),
-            abi.encodePacked(address(safe2)),
-            keccak256("safe2")
+            address(delegatorModuleImplementation), abi.encodePacked(address(safe2)), keccak256("safe2")
         );
         DelegatorModule safe2Module = DelegatorModule(safe2Clone);
 
@@ -470,11 +526,8 @@ contract DelegatorModuleIntegrationTest is Test {
         permissionContexts[0] = abi.encode(delegations);
 
         bytes[] memory executionCallDatas = new bytes[](1);
-        executionCallDatas[0] = ExecutionLib.encodeSingle(
-            address(token),
-            0,
-            abi.encodeWithSelector(IERC20.transfer.selector, recipient, 100 ether)
-        );
+        executionCallDatas[0] =
+            ExecutionLib.encodeSingle(address(token), 0, abi.encodeWithSelector(IERC20.transfer.selector, recipient, 100 ether));
 
         ModeCode[] memory modes = new ModeCode[](1);
         modes[0] = ModeLib.encodeSimpleSingle();
@@ -525,10 +578,7 @@ contract DelegatorModuleIntegrationTest is Test {
         });
 
         bytes32 hash2 = MessageHashUtils.toEthSignedMessageHash(
-            MessageHashUtils.toTypedDataHash(
-                delegationManager.getDomainHash(),
-                EncoderLib._getDelegationHash(delegation2)
-            )
+            MessageHashUtils.toTypedDataHash(delegationManager.getDomainHash(), EncoderLib._getDelegationHash(delegation2))
         );
         (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(_intermediateOwnerPk, hash2);
         delegation2.signature = abi.encodePacked(r2, s2, v2);
@@ -536,7 +586,7 @@ contract DelegatorModuleIntegrationTest is Test {
         Delegation[] memory delegations = new Delegation[](2);
         delegations[0] = delegation2; // Leaf
         delegations[1] = delegation1; // Root
-        
+
         return delegations;
     }
 }
