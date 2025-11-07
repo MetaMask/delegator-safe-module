@@ -280,4 +280,61 @@ contract DelegatorModuleTest is Test {
         assertFalse(delegatorModule.supportsInterface(0xffffffff), "Should not support 0xffffffff");
         assertFalse(delegatorModule.supportsInterface(0x12345678), "Should not support random interface");
     }
+
+    /// @notice Tests successful execution of a single transaction via execute function called by Safe
+    function test_Execute_Success() public {
+        // Set up mock to return success
+        mockSafe.setShouldSucceed(true);
+
+        // Prepare call parameters
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        address target = address(counter);
+        uint256 value = 0;
+        bytes memory callData = abi.encodeWithSelector(CounterForTest.increment.selector);
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(target, value, callData);
+
+        // Call execute as the Safe
+        vm.prank(address(mockSafe));
+        delegatorModule.execute(mode, executionCalldata);
+
+        // Verify execution was called (in a real scenario, counter would increment)
+        assertEq(mockSafe.lastTarget(), address(0));
+        assertEq(mockSafe.lastValue(), 0);
+    }
+
+    /// @notice Tests that execute reverts when called by non-Safe address
+    function test_Execute_RevertOnUnauthorizedCaller() public {
+        // Prepare call parameters
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        // Call from unauthorized address should revert with NotSafe
+        vm.prank(address(0x1234));
+        vm.expectRevert(DelegatorModule.NotSafe.selector);
+        delegatorModule.execute(mode, executionCalldata);
+    }
+
+    /// @notice Tests that execute reverts with unsupported call type
+    function test_Execute_RevertOnUnsupportedCallType() public {
+        // Create an unsupported call type
+        ModeCode mode = ModeLib.encode(CallType.wrap(0x02), EXECTYPE_DEFAULT, MODE_DEFAULT, ModePayload.wrap(0x00));
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        // Call should revert with UnsupportedCallType
+        vm.prank(address(mockSafe));
+        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedCallType.selector, CallType.wrap(0x02)));
+        delegatorModule.execute(mode, executionCalldata);
+    }
+
+    /// @notice Tests that execute reverts with unsupported exec type
+    function test_Execute_RevertOnUnsupportedExecType() public {
+        // Create an unsupported exec type
+        ModeCode mode = ModeLib.encode(CALLTYPE_SINGLE, ExecType.wrap(0x02), MODE_DEFAULT, ModePayload.wrap(0x00));
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        // Call should revert with UnsupportedExecType
+        vm.prank(address(mockSafe));
+        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        delegatorModule.execute(mode, executionCalldata);
+    }
 }

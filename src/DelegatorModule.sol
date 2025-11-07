@@ -28,6 +28,9 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     /// @dev Error thrown when the caller is not the delegation manager.
     error NotDelegationManager();
 
+    /// @dev Error thrown when the caller is not the Safe.
+    error NotSafe();
+
     /// @dev Error thrown when an execution with an unsupported CallType was made
     error UnsupportedCallType(CallType callType);
 
@@ -45,6 +48,15 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
      */
     modifier onlyDelegationManager() {
         if (msg.sender != delegationManager) revert NotDelegationManager();
+        _;
+    }
+
+    /**
+     * @notice Require the function call to come from the Safe.
+     * @dev Check that the caller is the stored Safe contract.
+     */
+    modifier onlySafe() {
+        if (msg.sender != safe()) revert NotSafe();
         _;
     }
 
@@ -115,6 +127,39 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     }
 
     /**
+     * @notice Executes a transaction from the Safe
+     * @dev Only callable by the Safe. Allows the Safe to execute transactions directly through the module.
+     * @dev Related: @erc7579/MSAAdvanced.sol
+     * @param _mode The encoded execution mode of the transaction (CallType, ExecType, etc.).
+     * @param _executionCalldata The encoded call data to be executed.
+     */
+    function execute(ModeCode _mode, bytes calldata _executionCalldata) external payable onlySafe {
+        (CallType callType_, ExecType execType_,,) = _mode.decode();
+
+        // Check if calltype is batch or single
+        if (callType_ == CALLTYPE_BATCH) {
+            // Destructure executionCallData according to batched exec
+            Execution[] calldata executions_ = _executionCalldata.decodeBatch();
+            // check if execType is revert
+            if (execType_ == EXECTYPE_DEFAULT) {
+                _executeDirect(executions_);
+            } else {
+                revert UnsupportedExecType(execType_);
+            }
+        } else if (callType_ == CALLTYPE_SINGLE) {
+            // Destructure executionCallData according to single exec
+            (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
+            if (execType_ == EXECTYPE_DEFAULT) {
+                _executeDirect(target_, value_, callData_);
+            } else {
+                revert UnsupportedExecType(execType_);
+            }
+        } else {
+            revert UnsupportedCallType(callType_);
+        }
+    }
+
+    /**
      * @notice Returns the address of the Safe contract that this module is installed on
      * @return safeAddress_ The address of the Safe contract
      */
@@ -160,6 +205,40 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
         for (uint256 i; i < length; i++) {
             Execution calldata _exec = executions[i];
             result[i] = _execute(_exec.target, _exec.value, _exec.callData);
+        }
+    }
+
+    /**
+     * @notice Executes a call directly (not through Safe) to a target contract
+     * @dev Used for direct contract interactions like calling DelegationManager
+     * @param _target The address of the target contract
+     * @param _value The amount of ETH to send with the call
+     * @param _callData The calldata to send to the target contract
+     */
+    function _executeDirect(address _target, uint256 _value, bytes calldata _callData) internal {
+        (bool success, bytes memory returnData) = _target.call{ value: _value }(_callData);
+        if (!success) {
+            // Bubble up the revert reason
+            if (returnData.length > 0) {
+                assembly {
+                    let returnDataSize := mload(returnData)
+                    revert(add(32, returnData), returnDataSize)
+                }
+            }
+            revert ExecutionFailed();
+        }
+    }
+
+    /**
+     * @notice Executes multiple transactions directly (not through Safe)
+     * @dev Iterates through the executions array and calls _executeDirect for each transaction
+     * @param executions Array of Execution structs containing target, value and calldata for each transaction
+     */
+    function _executeDirect(Execution[] calldata executions) internal {
+        uint256 length = executions.length;
+        for (uint256 i; i < length; i++) {
+            Execution calldata _exec = executions[i];
+            _executeDirect(_exec.target, _exec.value, _exec.callData);
         }
     }
 
