@@ -9,6 +9,9 @@ contract CounterForTest {
     /// @notice The current count value
     uint256 public count;
 
+    /// @notice Custom error for testing revert behavior
+    error CounterError(string message);
+
     /// @notice Increments the counter by 1
     /// @dev External function that increases count by 1
     function increment() external {
@@ -20,5 +23,11 @@ contract CounterForTest {
     /// @return The current value of count
     function getCount() external view returns (uint256) {
         return count;
+    }
+
+    /// @notice Reverts with a custom error message for testing
+    /// @dev Used to test revert reason bubbling in execute functions
+    function revertWithMessage() external pure {
+        revert CounterError("Test revert message");
     }
 }

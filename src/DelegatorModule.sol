@@ -7,6 +7,7 @@ import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol
 import { LibClone } from "@solady/utils/LibClone.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
+import { ExecutionHelper } from "@erc7579/core/ExecutionHelper.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
 import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
@@ -14,31 +15,53 @@ import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.
 
 import { ISafe } from "./interfaces/ISafe.sol";
 
-contract DelegatorModule is IDeleGatorCore, IERC165 {
+/**
+ * @title DelegatorModule
+ * @notice A Safe module that integrates with the Delegation Framework to enable delegation capabilities
+ * @dev This module allows Safe smart contract wallets to participate in the Delegation Framework as delegators.
+ * @dev It implements IDeleGatorCore to provide delegation execution and signature validation through the Safe.
+ * @dev The module uses LibClone for minimal proxy deployment pattern, storing the Safe address in immutable args.
+ * @author Delegation Framework Team
+ */
+contract DelegatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
 
     ////////////////////////////// State //////////////////////////////
 
-    /// @dev The DelegationManager contract that has root access to this contract
+    /**
+     * @notice The DelegationManager contract that has root access to this contract
+     * @dev Only this address can call executeFromExecutor to redeem delegations
+     */
     address public immutable delegationManager;
 
     ////////////////////////////// Errors //////////////////////////////
 
-    /// @dev Error thrown when the caller is not the delegation manager.
+    /**
+     * @notice Error thrown when the caller is not the delegation manager
+     * @dev Only the DelegationManager can call executeFromExecutor
+     */
     error NotDelegationManager();
 
-    /// @dev Error thrown when the caller is not the Safe.
+    /**
+     * @notice Error thrown when the caller is not the Safe
+     * @dev Only the associated Safe can call execute and other Safe-restricted functions
+     */
     error NotSafe();
 
-    /// @dev Error thrown when an execution with an unsupported CallType was made
+    /**
+     * @notice Error thrown when an execution with an unsupported CallType was made
+     * @dev Currently only supports CALLTYPE_SINGLE and CALLTYPE_BATCH
+     * @param callType The unsupported CallType that was attempted
+     */
     error UnsupportedCallType(CallType callType);
 
-    /// @dev Error thrown when an execution with an unsupported ExecType was made
+    /**
+     * @notice Error thrown when an execution with an unsupported ExecType was made
+     * @dev Currently only supports EXECTYPE_DEFAULT (revert on failure)
+     * @param execType The unsupported ExecType that was attempted
+     */
     error UnsupportedExecType(ExecType execType);
-
-    /// @dev Error thrown when the execution fails.
-    error ExecutionFailed();
 
     ////////////////////////////// Modifiers //////////////////////////////
 
@@ -63,8 +86,8 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     ////////////////////////////// Constructor //////////////////////////////
 
     /**
-     * @notice Initializes the DelegatorModule contract
-     * @param _delegationManager the address of the trusted DelegationManager contract that will have root access to this contract
+     * @notice Initializes the DelegatorModule implementation contract
+     * @param _delegationManager The address of the trusted DelegationManager contract that will have root access to this contract
      */
     constructor(address _delegationManager) {
         delegationManager = _delegationManager;
@@ -73,14 +96,14 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     ////////////////////////////// External Methods //////////////////////////////
 
     /**
-     * @notice Executes one call on behalf of this contract,
-     *         authorized by the DelegationManager.
-     * @dev Only callable by the DelegationManager. Supports single-call execution,
-     *         and handles the revert logic via ExecType.
+     * @notice Executes delegated transactions on behalf of the Safe through the DelegationManager
+     * @dev Only callable by the DelegationManager as part of the delegation redemption flow
+     * @dev Executes the transaction through the Safe using execTransactionFromModuleReturnData
+     * @dev Supports both single and batch executions with EXECTYPE_DEFAULT (revert on failure)
      * @dev Related: @erc7579/MSAAdvanced.sol
-     * @param _mode The encoded execution mode of the transaction (CallType, ExecType, etc.).
-     * @param _executionCalldata The encoded call data (single) to be executed.
-     * @return returnData_ An array of returned data from each executed call.
+     * @param _mode The encoded execution mode of the transaction (CallType, ExecType, etc.)
+     * @param _executionCalldata The encoded call data to be executed (single or batch)
+     * @return returnData_ An array of returned data from each executed call
      */
     function executeFromExecutor(
         ModeCode _mode,
@@ -97,15 +120,15 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
         if (callType_ == CALLTYPE_BATCH) {
             // Destructure executionCallData according to batched exec
             Execution[] calldata executions_ = _executionCalldata.decodeBatch();
-            // check if execType is revert or try
-            if (execType_ == EXECTYPE_DEFAULT) returnData_ = _execute(executions_);
+            // check if execType is revert
+            if (execType_ == EXECTYPE_DEFAULT) returnData_ = _executeOnSafe(executions_);
             else revert UnsupportedExecType(execType_);
         } else if (callType_ == CALLTYPE_SINGLE) {
             // Destructure executionCallData according to single exec
             (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
             returnData_ = new bytes[](1);
             if (execType_ == EXECTYPE_DEFAULT) {
-                returnData_[0] = _execute(target_, value_, callData_);
+                returnData_[0] = _executeOnSafe(target_, value_, callData_);
             } else {
                 revert UnsupportedExecType(execType_);
             }
@@ -116,22 +139,23 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
 
     /**
      * @inheritdoc IERC1271
-     * @notice Verifies the signatures of the signers.
-     * @param _hash The hash of the data signed.
-     * @param _signature The signatures of the signers.
-     * @return magicValue_ A bytes4 magic value which is EIP1271_MAGIC_VALUE(0x1626ba7e) if the signature is valid, returns
-     * SIG_VALIDATION_FAILED(0xffffffff) if there is a signature mismatch and reverts (for all other errors).
+     * @notice Verifies signatures by delegating to the Safe's isValidSignature implementation
+     * @dev This allows the module to validate signatures using the Safe's signature validation logic
+     * @param _hash The hash of the data that was signed
+     * @param _signature The signature bytes to validate
+     * @return magicValue_ EIP1271_MAGIC_VALUE (0x1626ba7e) if valid, or SIG_VALIDATION_FAILED (0xffffffff) if invalid
      */
-    function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4) {
+    function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4 magicValue_) {
         return IERC1271(safe()).isValidSignature(_hash, _signature);
     }
 
     /**
-     * @notice Executes a transaction from the Safe
-     * @dev Only callable by the Safe. Allows the Safe to execute transactions directly through the module.
+     * @notice Executes transactions directly from the module when called by the Safe
+     * @dev Only callable by the Safe. Allows the Safe to use the module for direct execution.
+     * @dev Supports both single and batch executions with EXECTYPE_DEFAULT (revert on failure)
      * @dev Related: @erc7579/MSAAdvanced.sol
-     * @param _mode The encoded execution mode of the transaction (CallType, ExecType, etc.).
-     * @param _executionCalldata The encoded call data to be executed.
+     * @param _mode The encoded execution mode of the transaction (CallType, ExecType, etc.)
+     * @param _executionCalldata The encoded call data to be executed (single or batch)
      */
     function execute(ModeCode _mode, bytes calldata _executionCalldata) external payable onlySafe {
         (CallType callType_, ExecType execType_,,) = _mode.decode();
@@ -140,9 +164,9 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
         if (callType_ == CALLTYPE_BATCH) {
             // Destructure executionCallData according to batched exec
             Execution[] calldata executions_ = _executionCalldata.decodeBatch();
-            // check if execType is revert
+            // Check if execType is revert
             if (execType_ == EXECTYPE_DEFAULT) {
-                _executeDirect(executions_);
+                _execute(executions_);
             } else {
                 revert UnsupportedExecType(execType_);
             }
@@ -150,7 +174,7 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
             // Destructure executionCallData according to single exec
             (address target_, uint256 value_, bytes calldata callData_) = _executionCalldata.decodeSingle();
             if (execType_ == EXECTYPE_DEFAULT) {
-                _executeDirect(target_, value_, callData_);
+                _execute(target_, value_, callData_);
             } else {
                 revert UnsupportedExecType(execType_);
             }
@@ -160,8 +184,10 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     }
 
     /**
-     * @notice Returns the address of the Safe contract that this module is installed on
-     * @return safeAddress_ The address of the Safe contract
+     * @notice Returns the address of the Safe contract that this module is associated with
+     * @dev Extracts the Safe address from the clone's immutable args set during deployment
+     * @dev Each module clone is bound to a specific Safe address
+     * @return The address of the Safe contract
      */
     function safe() public view returns (address) {
         return _getSafeAddressFromArgs();
@@ -169,7 +195,10 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
 
     /**
      * @inheritdoc IERC165
-     * @dev Supports the following interfaces: IDeleGatorCore, IERC165, IERC1271
+     * @notice Checks if the contract implements a specific interface
+     * @dev Supports IDeleGatorCore, IERC165, and IERC1271 interfaces
+     * @param _interfaceId The interface identifier to check
+     * @return True if the interface is supported, false otherwise
      */
     function supportsInterface(bytes4 _interfaceId) public view virtual override returns (bool) {
         return _interfaceId == type(IDeleGatorCore).interfaceId || _interfaceId == type(IERC165).interfaceId
@@ -179,73 +208,50 @@ contract DelegatorModule is IDeleGatorCore, IERC165 {
     ////////////////////////////// Internal Methods //////////////////////////////
 
     /**
-     * @notice Executes a call to a target contract through the Safe.
-     * @param _target The address of the target contract.
-     * @param _value The amount of ETH to send with the call.
-     * @param _callData The calldata to send to the target contract.
-     * @return returnData_ The return data from the call.
+     * @notice Executes a single transaction through the Safe's module transaction execution
+     * @dev Uses Safe's execTransactionFromModuleReturnData to execute with proper authorization
+     * @dev This execution happens in the Safe's context, so msg.sender will be the Safe for the target call
+     * @dev Reverts if the Safe's execution returns false (transaction failed)
+     * @param _target The address of the target contract to call
+     * @param _value The amount of ETH to send with the call
+     * @param _callData The calldata to send to the target contract
+     * @return returnData_ The return data from the call
      */
-    function _execute(address _target, uint256 _value, bytes calldata _callData) internal returns (bytes memory returnData_) {
-        (bool success, bytes memory returnData) =
-            ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
-        if (!success) revert ExecutionFailed();
-        return returnData;
+    function _executeOnSafe(
+        address _target,
+        uint256 _value,
+        bytes calldata _callData
+    )
+        internal
+        returns (bytes memory returnData_)
+    {
+        bool success_;
+        (success_, returnData_) = ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
+        if (!success_) revert ExecutionFailed();
     }
 
     /**
      * @notice Executes multiple transactions through the Safe in a batch
-     * @dev Iterates through the executions array and calls _execute for each transaction
-     * @param executions Array of Execution structs containing target, value and calldata for each transaction
-     * @return result Array of bytes containing the return data from each transaction
+     * @dev Iterates through the executions array and calls _executeOnSafe for each transaction
+     * @dev All transactions are executed sequentially; if any fails, the entire batch reverts
+     * @param _executions Array of Execution structs containing target, value and calldata for each transaction
+     * @return result_ Array of bytes containing the return data from each transaction
      */
-    function _execute(Execution[] calldata executions) internal returns (bytes[] memory result) {
-        uint256 length = executions.length;
-        result = new bytes[](length);
+    function _executeOnSafe(Execution[] calldata _executions) internal returns (bytes[] memory result_) {
+        uint256 length_ = _executions.length;
+        result_ = new bytes[](length_);
 
-        for (uint256 i; i < length; i++) {
-            Execution calldata _exec = executions[i];
-            result[i] = _execute(_exec.target, _exec.value, _exec.callData);
+        for (uint256 i; i < length_; i++) {
+            Execution calldata exec_ = _executions[i];
+            result_[i] = _executeOnSafe(exec_.target, exec_.value, exec_.callData);
         }
     }
 
     /**
-     * @notice Executes a call directly (not through Safe) to a target contract
-     * @dev Used for direct contract interactions like calling DelegationManager
-     * @param _target The address of the target contract
-     * @param _value The amount of ETH to send with the call
-     * @param _callData The calldata to send to the target contract
-     */
-    function _executeDirect(address _target, uint256 _value, bytes calldata _callData) internal {
-        (bool success, bytes memory returnData) = _target.call{ value: _value }(_callData);
-        if (!success) {
-            // Bubble up the revert reason
-            if (returnData.length > 0) {
-                assembly {
-                    let returnDataSize := mload(returnData)
-                    revert(add(32, returnData), returnDataSize)
-                }
-            }
-            revert ExecutionFailed();
-        }
-    }
-
-    /**
-     * @notice Executes multiple transactions directly (not through Safe)
-     * @dev Iterates through the executions array and calls _executeDirect for each transaction
-     * @param executions Array of Execution structs containing target, value and calldata for each transaction
-     */
-    function _executeDirect(Execution[] calldata executions) internal {
-        uint256 length = executions.length;
-        for (uint256 i; i < length; i++) {
-            Execution calldata _exec = executions[i];
-            _executeDirect(_exec.target, _exec.value, _exec.callData);
-        }
-    }
-
-    /**
-     * @notice Gets the Safe address from the clone initialization arguments
-     * @dev Uses LibClone to extract the Safe address that was passed during initialization
-     * @return safeAddress_ The address of the Safe contract that this module is installed on
+     * @notice Retrieves the Safe address from the clone's immutable arguments
+     * @dev Uses LibClone to extract the Safe address that was passed during clone deployment
+     * @dev The Safe address is stored as immutable args using the minimal proxy pattern
+     * @return safeAddress_ The address of the Safe contract that this module is bound to
      */
     function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
         safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
