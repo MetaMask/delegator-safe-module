@@ -17,10 +17,10 @@ import { ISafe } from "./interfaces/ISafe.sol";
 
 /**
  * @title DelegatorModule
- * @notice A Safe module that integrates with the Delegation Framework to enable delegation capabilities
- * @dev This module allows Safe smart contract wallets to participate in the Delegation Framework as delegators.
- * @dev It implements IDeleGatorCore to provide delegation execution and signature validation through the Safe.
- * @dev The module uses LibClone for minimal proxy deployment pattern, storing the Safe address in immutable args.
+ * @notice A Safe module that enables the Safe to delegate its assets and permissions via the Delegation Framework
+ * @dev The module acts as a bridge - it does NOT delegate its own permissions but enables the Safe to delegate.
+ * @dev Signature validation is delegated to the Safe itself, making this module signature-scheme agnostic.
+ * @dev Uses LibClone for minimal proxy deployment, binding each module instance to a specific Safe address.
  * @author Delegation Framework Team
  */
 contract DelegatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
@@ -139,8 +139,9 @@ contract DelegatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
 
     /**
      * @inheritdoc IERC1271
-     * @notice Verifies signatures by delegating to the Safe's isValidSignature implementation
-     * @dev This allows the module to validate signatures using the Safe's signature validation logic
+     * @notice Validates signatures by forwarding the request directly to the Safe
+     * @dev The module is signature-scheme agnostic - it relies entirely on the Safe's validation logic
+     * @dev Supports any signature scheme the Safe implements
      * @param _hash The hash of the data that was signed
      * @param _signature The signature bytes to validate
      * @return magicValue_ EIP1271_MAGIC_VALUE (0x1626ba7e) if valid, or SIG_VALIDATION_FAILED (0xffffffff) if invalid
