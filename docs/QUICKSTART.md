@@ -25,6 +25,8 @@ address moduleAddress = factory.deployDeleGatorModule(
 
 ### Via Foundry Script
 
+Set required environment variables. Then run:
+
 ```bash
 forge script script/DeployDeleGatorModule.s.sol \
     --rpc-url $RPC_URL \

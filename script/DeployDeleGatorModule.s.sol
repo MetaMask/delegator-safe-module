@@ -8,7 +8,8 @@ import { DeleGatorModuleFactory } from "../src/DeleGatorModuleFactory.sol";
 /**
  * @title DeployDeleGatorModule
  * @notice Script to deploy the DeleGatorModule using environment variables for configuration
- * @dev Set DELEGATION_MANAGER, SAFE_ADDRESS, and DEPLOYER_PRIVATE_KEY environment variables before running
+ * @dev Required: DELEGATION_MANAGER, SAFE_ADDRESS, DEPLOYER_PRIVATE_KEY, and SALT environment variables
+ * @dev Note: Use a salt shorter than 32 bytes for deterministic addresses
  * @dev To run the script: $ forge script script/DeployDeleGatorModule.s.sol --rpc-url <your_rpc_url> --broadcast
  */
 contract DeployDeleGatorModule is Script {
