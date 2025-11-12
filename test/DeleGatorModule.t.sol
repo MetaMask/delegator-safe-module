@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
-pragma solidity ^0.8.13;
+pragma solidity 0.8.23;
 
 import { Test } from "forge-std/Test.sol";
 import { ModeLib, CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT, MODE_DEFAULT, ModePayload } from "@erc7579/lib/ModeLib.sol";
