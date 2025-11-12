@@ -419,4 +419,55 @@ contract DeleGatorModuleTest is Test {
         vm.expectRevert(abi.encodeWithSelector(CounterForTest.CounterError.selector, "Test revert message"));
         delegatorModule.execute(mode, executionCalldata);
     }
+
+    /// @notice Tests that executeFromExecutor bubbles up custom error with parameters
+    function test_ExecuteFromExecutor_BubbleUpCustomError() public {
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        bytes memory executionCalldata =
+            ExecutionLib.encodeSingle(address(counter), 0, abi.encodeWithSelector(CounterForTest.revertWithMessage.selector));
+
+        vm.prank(address(mockDelegationManager));
+        vm.expectRevert(abi.encodeWithSelector(CounterForTest.CounterError.selector, "Test revert message"));
+        delegatorModule.executeFromExecutor(mode, executionCalldata);
+    }
+
+    /// @notice Tests that execute batch bubbles up revert reason from failed call
+    function test_Execute_BatchBubbleUpRevertReason() public {
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({ target: address(counter), value: 0, callData: abi.encodeCall(CounterForTest.increment, ()) });
+        executions[1] =
+            Execution({ target: address(counter), value: 0, callData: abi.encodeCall(CounterForTest.revertWithMessage, ()) });
+
+        ModeCode mode = ModeLib.encodeSimpleBatch();
+        bytes memory executionCalldata = ExecutionLib.encodeBatch(executions);
+
+        vm.prank(address(mockSafe));
+        vm.expectRevert(abi.encodeWithSelector(CounterForTest.CounterError.selector, "Test revert message"));
+        delegatorModule.execute(mode, executionCalldata);
+
+        // First transaction should not have been committed
+        assertEq(counter.count(), 0);
+    }
+
+    /// @notice Tests that executeFromExecutor batch bubbles up revert reason
+    function test_ExecuteFromExecutor_BatchBubbleUpRevertReason() public {
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({ target: address(counter), value: 0, callData: abi.encodeCall(CounterForTest.increment, ()) });
+        executions[1] =
+            Execution({ target: address(counter), value: 0, callData: abi.encodeCall(CounterForTest.revertWithMessage, ()) });
+
+        ModeCode mode = ModeLib.encodeSimpleBatch();
+        bytes memory executionCalldata = ExecutionLib.encodeBatch(executions);
+
+        vm.prank(address(mockDelegationManager));
+        vm.expectRevert(abi.encodeWithSelector(CounterForTest.CounterError.selector, "Test revert message"));
+        delegatorModule.executeFromExecutor(mode, executionCalldata);
+
+        // First transaction should not have been committed
+        assertEq(counter.count(), 0);
+    }
+
+    /// @notice Tests that generic ExecutionFailed error is used when no revert data is available
+
+    /// @notice Tests that generic ExecutionFailed error is used in executeFromExecutor when no revert data
 }

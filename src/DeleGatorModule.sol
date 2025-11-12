@@ -63,6 +63,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      */
     error UnsupportedExecType(ExecType execType);
 
+
     ////////////////////////////// Modifiers //////////////////////////////
 
     /**
@@ -209,10 +210,32 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
     ////////////////////////////// Internal Methods //////////////////////////////
 
     /**
+     * @notice Bubbles up the revert reason from failed calls
+     * @dev If returnData is not empty, forwards it as the revert reason using assembly
+     * @dev If returnData is empty, reverts with ExecutionFailed() custom error
+     * @param success_ Whether the call succeeded
+     * @param returnData_ The return data from the call (may contain revert reason)
+     */
+    function _checkSuccess(bool success_, bytes memory returnData_) private pure {
+        if (success_) return;
+
+        // Bubble up revert reason if available
+        if (returnData_.length > 0) {
+            assembly {
+                let returnDataSize := mload(returnData_)
+                revert(add(32, returnData_), returnDataSize)
+            }
+        }
+
+        // No revert reason provided, use generic error
+        revert ExecutionFailed();
+    }
+
+    /**
      * @notice Executes a single transaction through the Safe's module transaction execution
      * @dev Uses Safe's execTransactionFromModuleReturnData to execute with proper authorization
      * @dev This execution happens in the Safe's context, so msg.sender will be the Safe for the target call
-     * @dev Reverts if the Safe's execution returns false (transaction failed)
+     * @dev Reverts with original revert reason if the Safe's execution fails
      * @param _target The address of the target contract to call
      * @param _value The amount of ETH to send with the call
      * @param _callData The calldata to send to the target contract
@@ -228,7 +251,8 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
     {
         bool success_;
         (success_, returnData_) = ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
-        if (!success_) revert ExecutionFailed();
+        _checkSuccess(success_, returnData_);
+        return returnData_;
     }
 
     /**
