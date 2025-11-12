@@ -5,7 +5,6 @@ import { Test } from "forge-std/Test.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import { LibClone } from "@solady/utils/LibClone.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 
@@ -14,6 +13,7 @@ import { EncoderLib } from "@delegation-framework/libraries/EncoderLib.sol";
 import { Delegation, Caveat, ModeCode, Execution } from "@delegation-framework/utils/Types.sol";
 
 import { DeleGatorModule } from "../src/DeleGatorModule.sol";
+import { DeleGatorModuleFactory } from "../src/DeleGatorModuleFactory.sol";
 import { OwnableMockSafe } from "./mocks/OwnableMockSafe.sol";
 
 /// @notice Basic ERC20 token for testing
@@ -36,7 +36,7 @@ contract DeleGatorModuleIntegrationTest is Test {
     ////////////////////////////// State //////////////////////////////
 
     DelegationManager public delegationManager;
-    DeleGatorModule public delegatorModuleImplementation;
+    DeleGatorModuleFactory public factory;
     DeleGatorModule public delegatorModule;
     OwnableMockSafe public safe;
     TestToken public token;
@@ -67,14 +67,13 @@ contract DeleGatorModuleIntegrationTest is Test {
         // Deploy OwnableMockSafe
         safe = new OwnableMockSafe(safeOwner);
 
-        // Deploy DeleGatorModule implementation
-        delegatorModuleImplementation = new DeleGatorModule(address(delegationManager));
+        // Deploy DeleGatorModuleFactory
+        factory = new DeleGatorModuleFactory(address(delegationManager));
 
         // Deploy DeleGatorModule clone for this safe
-        bytes memory args = abi.encodePacked(address(safe));
         bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
-        address clone = LibClone.cloneDeterministic(address(delegatorModuleImplementation), args, salt);
-        delegatorModule = DeleGatorModule(clone);
+        address module = factory.deploy(address(safe), salt);
+        delegatorModule = DeleGatorModule(module);
 
         // Enable the module in the safe
         vm.prank(safeOwner);
@@ -268,9 +267,8 @@ contract DeleGatorModuleIntegrationTest is Test {
     function test_ModuleToModuleDelegation() public {
         OwnableMockSafe delegateSafe = new OwnableMockSafe(delegate);
         bytes32 salt2 = keccak256("delegate-safe");
-        address delegateClone =
-            LibClone.cloneDeterministic(address(delegatorModuleImplementation), abi.encodePacked(address(delegateSafe)), salt2);
-        DeleGatorModule delegateSafeModule = DeleGatorModule(delegateClone);
+        address delegateModule = factory.deploy(address(delegateSafe), salt2);
+        DeleGatorModule delegateSafeModule = DeleGatorModule(delegateModule);
 
         vm.prank(delegate);
         delegateSafe.enableModule(address(delegateSafeModule));
@@ -341,10 +339,8 @@ contract DeleGatorModuleIntegrationTest is Test {
         address safe2OwnerAddr = vm.addr(safe2OwnerPk);
         OwnableMockSafe safe2 = new OwnableMockSafe(safe2OwnerAddr);
 
-        address safe2Clone = LibClone.cloneDeterministic(
-            address(delegatorModuleImplementation), abi.encodePacked(address(safe2)), keccak256("safe2")
-        );
-        DeleGatorModule safe2Module = DeleGatorModule(safe2Clone);
+        address safe2ModuleAddress = factory.deploy(address(safe2), keccak256("safe2"));
+        DeleGatorModule safe2Module = DeleGatorModule(safe2ModuleAddress);
 
         vm.prank(safe2OwnerAddr);
         safe2.enableModule(address(safe2Module));

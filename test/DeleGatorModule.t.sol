@@ -6,13 +6,13 @@ import { ModeLib, CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT, MODE_DEFAUL
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { ExecutionHelper } from "@erc7579/core/ExecutionHelper.sol";
 import { Enum } from "@safe-smart-account/common/Enum.sol";
-import { LibClone } from "@solady/utils/LibClone.sol";
 import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 import { DeleGatorModule } from "../src/DeleGatorModule.sol";
+import { DeleGatorModuleFactory } from "../src/DeleGatorModuleFactory.sol";
 import { OwnableMockSafe } from "./mocks/OwnableMockSafe.sol";
 import { CounterForTest } from "./mocks/CounterForTest.sol";
 
@@ -27,6 +27,7 @@ contract MockDelegationManager {
 
 contract DeleGatorModuleTest is Test {
     DeleGatorModule public delegatorModule;
+    DeleGatorModuleFactory public factory;
     OwnableMockSafe public mockSafe;
     MockDelegationManager public mockDelegationManager;
     CounterForTest public counter;
@@ -36,11 +37,10 @@ contract DeleGatorModuleTest is Test {
         safeOwner = makeAddr("safeOwner");
         mockSafe = new OwnableMockSafe(safeOwner);
         mockDelegationManager = new MockDelegationManager();
-        DeleGatorModule implementation = new DeleGatorModule(address(mockDelegationManager));
-        bytes memory args = abi.encodePacked(address(mockSafe));
+        factory = new DeleGatorModuleFactory(address(mockDelegationManager));
         bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
-        address clone = LibClone.cloneDeterministic(address(implementation), args, salt);
-        delegatorModule = DeleGatorModule(clone);
+        address module = factory.deploy(address(mockSafe), salt);
+        delegatorModule = DeleGatorModule(module);
         counter = new CounterForTest();
 
         // Enable the module on the Safe
@@ -63,9 +63,7 @@ contract DeleGatorModuleTest is Test {
 
         // Create a new safe and module for this test
         OwnableMockSafe testSafe = new OwnableMockSafe(signer);
-        address testModule = LibClone.cloneDeterministic(
-            address(new DeleGatorModule(address(mockDelegationManager))), abi.encodePacked(address(testSafe)), keccak256("test")
-        );
+        address testModule = factory.deploy(address(testSafe), keccak256("test"));
 
         // Create message and sign it
         bytes32 messageHash = keccak256("test message");
@@ -467,7 +465,51 @@ contract DeleGatorModuleTest is Test {
         assertEq(counter.count(), 0);
     }
 
-    /// @notice Tests that generic ExecutionFailed error is used when no revert data is available
+    ////////////////////////////// Implementation Contract Protection //////////////////////////////
 
-    /// @notice Tests that generic ExecutionFailed error is used in executeFromExecutor when no revert data
+    /// @notice Tests that calling safe() on the implementation contract reverts
+    function test_Implementation_RevertOnSafe() public {
+        DeleGatorModule implementation = DeleGatorModule(factory.implementation());
+        vm.expectRevert(DeleGatorModule.ImplementationNotUsable.selector);
+        implementation.safe();
+    }
+
+    /// @notice Tests that calling supportsInterface() on the implementation contract reverts
+    function test_Implementation_RevertOnSupportsInterface() public {
+        DeleGatorModule implementation = DeleGatorModule(factory.implementation());
+        vm.expectRevert(DeleGatorModule.ImplementationNotUsable.selector);
+        implementation.supportsInterface(type(IERC165).interfaceId);
+    }
+
+    /// @notice Tests that calling executeFromExecutor() on the implementation contract reverts
+    function test_Implementation_RevertOnExecuteFromExecutor() public {
+        DeleGatorModule implementation = DeleGatorModule(factory.implementation());
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        vm.prank(address(mockDelegationManager));
+        vm.expectRevert(DeleGatorModule.ImplementationNotUsable.selector);
+        implementation.executeFromExecutor(mode, executionCalldata);
+    }
+
+    /// @notice Tests that calling execute() on the implementation contract reverts
+    function test_Implementation_RevertOnExecute() public {
+        DeleGatorModule implementation = DeleGatorModule(factory.implementation());
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        vm.prank(address(mockSafe));
+        vm.expectRevert(DeleGatorModule.ImplementationNotUsable.selector);
+        implementation.execute(mode, executionCalldata);
+    }
+
+    /// @notice Tests that calling isValidSignature() on the implementation contract reverts
+    function test_Implementation_RevertOnIsValidSignature() public {
+        DeleGatorModule implementation = DeleGatorModule(factory.implementation());
+        bytes32 hash = keccak256("test");
+        bytes memory signature = "";
+
+        vm.expectRevert(DeleGatorModule.ImplementationNotUsable.selector);
+        implementation.isValidSignature(hash, signature);
+    }
 }

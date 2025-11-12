@@ -21,6 +21,9 @@ import { ISafe } from "./interfaces/ISafe.sol";
  * @dev The module acts as a bridge - it does NOT delegate its own permissions but enables the Safe to delegate.
  * @dev Signature validation is delegated to the Safe itself, making this module signature-scheme agnostic.
  * @dev Uses LibClone for minimal proxy deployment, binding each module instance to a specific Safe address.
+ * @dev IMPORTANT: This contract is an implementation contract and MUST NOT be used directly.
+ * @dev All module instances MUST be deployed through DeleGatorModuleFactory.
+ * @dev Direct deployments of this contract are not usable as modules.
  * @author Delegation Framework Team
  */
 contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
@@ -34,6 +37,13 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @dev Only this address can call executeFromExecutor to redeem delegations
      */
     address public immutable delegationManager;
+
+    /**
+     * @notice The implementation contract address (this contract)
+     * @dev Used to detect and prevent direct calls on the implementation contract
+     * @dev Clones will have a different address, allowing them to function normally
+     */
+    address private immutable implementation;
 
     ////////////////////////////// Errors //////////////////////////////
 
@@ -63,8 +73,23 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      */
     error UnsupportedExecType(ExecType execType);
 
+    /**
+     * @notice Error thrown when a function is called directly on the implementation contract
+     * @dev The implementation contract is not usable directly - only clones deployed via DeleGatorModuleFactory are functional
+     */
+    error ImplementationNotUsable();
 
     ////////////////////////////// Modifiers //////////////////////////////
+
+    /**
+     * @notice Prevents calls on the implementation contract
+     * @dev Reverts if called directly on the implementation (address(this) == implementation)
+     * @dev Clones will have a different address, so this check passes for them
+     */
+    modifier onlyProxy() {
+        if (address(this) == implementation) revert ImplementationNotUsable();
+        _;
+    }
 
     /**
      * @notice Require the function call to come from the DelegationManager.
@@ -92,6 +117,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      */
     constructor(address _delegationManager) {
         delegationManager = _delegationManager;
+        implementation = address(this);
     }
 
     ////////////////////////////// External Methods //////////////////////////////
@@ -112,6 +138,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
     )
         external
         payable
+        onlyProxy
         onlyDelegationManager
         returns (bytes[] memory returnData_)
     {
@@ -147,7 +174,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @param _signature The signature bytes to validate
      * @return magicValue_ EIP1271_MAGIC_VALUE (0x1626ba7e) if valid, or SIG_VALIDATION_FAILED (0xffffffff) if invalid
      */
-    function isValidSignature(bytes32 _hash, bytes calldata _signature) external view returns (bytes4 magicValue_) {
+    function isValidSignature(bytes32 _hash, bytes calldata _signature) external view onlyProxy returns (bytes4 magicValue_) {
         return IERC1271(safe()).isValidSignature(_hash, _signature);
     }
 
@@ -159,7 +186,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @param _mode The encoded execution mode of the transaction (CallType, ExecType, etc.)
      * @param _executionCalldata The encoded call data to be executed (single or batch)
      */
-    function execute(ModeCode _mode, bytes calldata _executionCalldata) external payable onlySafe {
+    function execute(ModeCode _mode, bytes calldata _executionCalldata) external payable onlyProxy onlySafe {
         (CallType callType_, ExecType execType_,,) = _mode.decode();
 
         // Check if calltype is batch or single
@@ -191,7 +218,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @dev Each module clone is bound to a specific Safe address
      * @return The address of the Safe contract
      */
-    function safe() public view returns (address) {
+    function safe() public view onlyProxy returns (address) {
         return _getSafeAddressFromArgs();
     }
 
@@ -202,7 +229,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @param _interfaceId The interface identifier to check
      * @return True if the interface is supported, false otherwise
      */
-    function supportsInterface(bytes4 _interfaceId) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 _interfaceId) public view virtual override onlyProxy returns (bool) {
         return _interfaceId == type(IDeleGatorCore).interfaceId || _interfaceId == type(IERC165).interfaceId
             || _interfaceId == type(IERC1271).interfaceId;
     }
