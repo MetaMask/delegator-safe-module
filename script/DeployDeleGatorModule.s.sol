@@ -33,23 +33,36 @@ contract DeployDeleGatorModule is Script {
             factory = DeleGatorModuleFactory(factoryAddress);
             console2.log("Using existing DeleGatorModuleFactory at:", factoryAddress);
         }
-        // Deploy the DeleGatorModule clone via the factory
-        deployedModule = factory.deploy(safeAddress, salt);
+
+        // Check if module already exists at predicted address
+        address predictedAddress = factory.predictAddress(safeAddress, salt);
+
+        if (predictedAddress.code.length > 0) {
+            // Module already deployed
+            console2.log("DeleGatorModule already exists at:", predictedAddress);
+            deployedModule = predictedAddress;
+        } else {
+            // Deploy the DeleGatorModule clone via the factory
+            deployedModule = factory.deploy(safeAddress, salt);
+            console2.log("Deployed new DeleGatorModule at:", deployedModule);
+        }
 
         // End broadcast
         vm.stopBroadcast();
 
         // Log deployment information
-        console2.log("DeleGatorModuleFactory deployed at:", address(factory));
-        console2.log("DeleGatorModule clone deployed at:", deployedModule);
-        console2.log("Configured with DelegationManager:", delegationManager);
-        console2.log("Configured with Safe Address:", safeAddress);
-        console2.log("Module Deployed for use with Safe.");
-        console2.log("******************************************");
-        console2.log("Enable the module in the Safe UI using the transaction builder.");
-        console2.log("set the contract to call to:", safeAddress);
-        console2.log("set the method to call to: enableModule");
-        console2.log("set the moduleAddress parameter to:", deployedModule);
+        console2.log("==========================================");
+        console2.log("DeleGatorModuleFactory:", address(factory));
+        console2.log("DeleGatorModule:", deployedModule);
+        console2.log("DelegationManager:", delegationManager);
+        console2.log("Safe Address:", safeAddress);
+        console2.log("==========================================");
+        console2.log("Next Steps:");
+        console2.log("1. Enable the module in the Safe UI using the transaction builder:");
+        console2.log("   - Contract to call:", safeAddress);
+        console2.log("   - Method: enableModule");
+        console2.log("   - moduleAddress parameter:", deployedModule);
+        console2.log("==========================================");
 
         return deployedModule;
     }
