@@ -12,11 +12,11 @@ import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
-import { DelegatorModule } from "../src/DelegatorModule.sol";
+import { DeleGatorModule } from "../src/DeleGatorModule.sol";
 import { OwnableMockSafe } from "./mocks/OwnableMockSafe.sol";
 import { CounterForTest } from "./mocks/CounterForTest.sol";
 
-/// @notice Tests for the DelegatorModule contract, verifying proper execution of transactions through a Safe
+/// @notice Tests for the DeleGatorModule contract, verifying proper execution of transactions through a Safe
 /// and correct handling of signatures. Tests cover single and batch transactions, error cases, and ERC1271 compatibility.
 contract MockDelegationManager {
     function execute(address target, bytes memory data) external {
@@ -25,8 +25,8 @@ contract MockDelegationManager {
     }
 }
 
-contract DelegatorModuleTest is Test {
-    DelegatorModule public delegatorModule;
+contract DeleGatorModuleTest is Test {
+    DeleGatorModule public delegatorModule;
     OwnableMockSafe public mockSafe;
     MockDelegationManager public mockDelegationManager;
     CounterForTest public counter;
@@ -36,11 +36,11 @@ contract DelegatorModuleTest is Test {
         safeOwner = makeAddr("safeOwner");
         mockSafe = new OwnableMockSafe(safeOwner);
         mockDelegationManager = new MockDelegationManager();
-        DelegatorModule implementation = new DelegatorModule(address(mockDelegationManager));
+        DeleGatorModule implementation = new DeleGatorModule(address(mockDelegationManager));
         bytes memory args = abi.encodePacked(address(mockSafe));
         bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
         address clone = LibClone.cloneDeterministic(address(implementation), args, salt);
-        delegatorModule = DelegatorModule(clone);
+        delegatorModule = DeleGatorModule(clone);
         counter = new CounterForTest();
 
         // Enable the module on the Safe
@@ -64,7 +64,7 @@ contract DelegatorModuleTest is Test {
         // Create a new safe and module for this test
         OwnableMockSafe testSafe = new OwnableMockSafe(signer);
         address testModule = LibClone.cloneDeterministic(
-            address(new DelegatorModule(address(mockDelegationManager))), abi.encodePacked(address(testSafe)), keccak256("test")
+            address(new DeleGatorModule(address(mockDelegationManager))), abi.encodePacked(address(testSafe)), keccak256("test")
         );
 
         // Create message and sign it
@@ -73,7 +73,7 @@ contract DelegatorModuleTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, ethSignedHash);
 
         // Verify the signature through the module
-        bytes4 result = DelegatorModule(testModule).isValidSignature(messageHash, abi.encodePacked(r, s, v));
+        bytes4 result = DeleGatorModule(testModule).isValidSignature(messageHash, abi.encodePacked(r, s, v));
         assertEq(result, IERC1271.isValidSignature.selector);
     }
 
@@ -235,7 +235,7 @@ contract DelegatorModuleTest is Test {
         bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
 
         vm.prank(address(0x1234));
-        vm.expectRevert(DelegatorModule.NotDelegationManager.selector);
+        vm.expectRevert(DeleGatorModule.NotDelegationManager.selector);
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
@@ -262,7 +262,7 @@ contract DelegatorModuleTest is Test {
 
         // Call should revert with UnsupportedCallType
         vm.prank(address(mockDelegationManager));
-        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedCallType.selector, CallType.wrap(0x02)));
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModule.UnsupportedCallType.selector, CallType.wrap(0x02)));
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
@@ -274,7 +274,7 @@ contract DelegatorModuleTest is Test {
 
         // Call should revert with UnsupportedExecType
         vm.prank(address(mockDelegationManager));
-        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
@@ -293,7 +293,7 @@ contract DelegatorModuleTest is Test {
 
         // Call should revert with UnsupportedExecType
         vm.prank(address(mockDelegationManager));
-        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
@@ -346,7 +346,7 @@ contract DelegatorModuleTest is Test {
         bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
 
         vm.prank(address(0x1234));
-        vm.expectRevert(DelegatorModule.NotSafe.selector);
+        vm.expectRevert(DeleGatorModule.NotSafe.selector);
         delegatorModule.execute(mode, executionCalldata);
     }
 
@@ -356,7 +356,7 @@ contract DelegatorModuleTest is Test {
         bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
 
         vm.prank(address(mockSafe));
-        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedCallType.selector, CallType.wrap(0x02)));
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModule.UnsupportedCallType.selector, CallType.wrap(0x02)));
         delegatorModule.execute(mode, executionCalldata);
     }
 
@@ -366,7 +366,7 @@ contract DelegatorModuleTest is Test {
         bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
 
         vm.prank(address(mockSafe));
-        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
         delegatorModule.execute(mode, executionCalldata);
     }
 
@@ -379,7 +379,7 @@ contract DelegatorModuleTest is Test {
         bytes memory executionCalldata = ExecutionLib.encodeBatch(executions);
 
         vm.prank(address(mockSafe));
-        vm.expectRevert(abi.encodeWithSelector(DelegatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModule.UnsupportedExecType.selector, ExecType.wrap(0x02)));
         delegatorModule.execute(mode, executionCalldata);
     }
 

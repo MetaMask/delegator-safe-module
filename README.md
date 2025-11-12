@@ -3,76 +3,53 @@
 > **Do not use on production mainnet chains**.  
 > Use only for testing or development purposes at your own risk.
 
-# Delegator Safe Module
+# DeleGator Safe Module
 
-A Gnosis Safe module that enables delegation capabilities via [Delegation Framework](https://github.com/MetaMask/delegation-framework) for Safe accounts. This module allows a Safe to act as a Delegator, enabling secure and controlled delegation of permissions and actions.
+A Safe module that enables delegation capabilities via the [Delegation Framework](https://github.com/MetaMask/delegation-framework).
 
-## Prerequisites
+## Documentation
 
-- [Foundry](https://book.getfoundry.sh/getting-started/installation)
-- Git
+- 📚 **[Usage Guide](./docs/README.md)** - Code examples and patterns
+- 🚀 **[Quick Start](./docs/QUICKSTART.md)** - Get started in 5 minutes
+- 🏗️ **[Architecture](./docs/ARCHITECTURE.md)** - Technical deep dive
 
 ## Installation
-
-1. Clone the repository:
 
 ```bash
 git clone https://github.com/your-username/delegator-safe-module.git
 cd delegator-safe-module
-```
-
-2. Install dependencies:
-
-```bash
 forge install
 ```
 
 ## Development
 
-### Build
-
 ```bash
+# Build
 forge build
-```
 
-### Test
-
-```bash
+# Test
 forge test
+
+# Coverage
+cd script && ./coverage
 ```
 
-### Test Coverage
+## Deployment
 
-To run the test coverage report:
+Set environment variables and deploy:
 
 ```bash
-cd script
-./coverage
+export DELEGATION_MANAGER=0x...
+export SAFE_ADDRESS=0x...
+export DEPLOYER_PRIVATE_KEY=0x...
+
+forge script script/DeployDeleGatorModule.s.sol --rpc-url $RPC_URL --broadcast
 ```
 
-This will open a browser tab with an HTML report showing the coverage percentage and covered lines.
+## Related Projects
 
-### Deploy
-
-To deploy the module, you'll need to set the following environment variables:
-
-- `DELEGATION_MANAGER`: Address of the delegation manager contract
-- `SAFE_ADDRESS`: Address of the Safe contract
-- `DEPLOYER_PRIVATE_KEY`: Private key deployer
-- `FACTORY_ADDRESS` (optional): Address of an existing factory contract
-
-Then run:
-
-```bash
-forge script script/DeployDelegatorModule.s.sol:DeployDelegatorModule --rpc-url <your_rpc_url> --broadcast
-```
-
-## Architecture
-
-The project consists of two main contracts:
-
-1. `DelegatorModule`: The core module contract that implements delegation functionality
-2. `DelegatorModuleFactory`: A factory contract for deploying module instances
+- [Delegation Framework](https://github.com/MetaMask/delegation-framework)
+- [Safe Contracts](https://github.com/safe-global/safe-smart-account)
 
 ## License
 

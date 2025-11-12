@@ -16,14 +16,14 @@ import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.
 import { ISafe } from "./interfaces/ISafe.sol";
 
 /**
- * @title DelegatorModule
+ * @title DeleGatorModule
  * @notice A Safe module that enables the Safe to delegate its assets and permissions via the Delegation Framework
  * @dev The module acts as a bridge - it does NOT delegate its own permissions but enables the Safe to delegate.
  * @dev Signature validation is delegated to the Safe itself, making this module signature-scheme agnostic.
  * @dev Uses LibClone for minimal proxy deployment, binding each module instance to a specific Safe address.
  * @author Delegation Framework Team
  */
-contract DelegatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
+contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
     using ModeLib for ModeCode;
     using ExecutionLib for bytes;
 
@@ -86,7 +86,7 @@ contract DelegatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
     ////////////////////////////// Constructor //////////////////////////////
 
     /**
-     * @notice Initializes the DelegatorModule implementation contract
+     * @notice Initializes the DeleGatorModule implementation contract
      * @param _delegationManager The address of the trusted DelegationManager contract that will have root access to this contract
      */
     constructor(address _delegationManager) {

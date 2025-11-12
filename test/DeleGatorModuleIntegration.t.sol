@@ -13,7 +13,7 @@ import { DelegationManager } from "@delegation-framework/DelegationManager.sol";
 import { EncoderLib } from "@delegation-framework/libraries/EncoderLib.sol";
 import { Delegation, Caveat, ModeCode, Execution } from "@delegation-framework/utils/Types.sol";
 
-import { DelegatorModule } from "../src/DelegatorModule.sol";
+import { DeleGatorModule } from "../src/DeleGatorModule.sol";
 import { OwnableMockSafe } from "./mocks/OwnableMockSafe.sol";
 
 /// @notice Basic ERC20 token for testing
@@ -27,17 +27,17 @@ contract TestToken is ERC20 {
     }
 }
 
-/// @title DelegatorModuleIntegrationTest
-/// @notice Integration tests for DelegatorModule with Safe and DelegationManager
+/// @title DeleGatorModuleIntegrationTest
+/// @notice Integration tests for DeleGatorModule with Safe and DelegationManager
 /// @dev Tests the full flow: Safe owner signs delegation, delegate redeems to transfer ERC20 tokens
-contract DelegatorModuleIntegrationTest is Test {
+contract DeleGatorModuleIntegrationTest is Test {
     using MessageHashUtils for bytes32;
 
     ////////////////////////////// State //////////////////////////////
 
     DelegationManager public delegationManager;
-    DelegatorModule public delegatorModuleImplementation;
-    DelegatorModule public delegatorModule;
+    DeleGatorModule public delegatorModuleImplementation;
+    DeleGatorModule public delegatorModule;
     OwnableMockSafe public safe;
     TestToken public token;
 
@@ -67,14 +67,14 @@ contract DelegatorModuleIntegrationTest is Test {
         // Deploy OwnableMockSafe
         safe = new OwnableMockSafe(safeOwner);
 
-        // Deploy DelegatorModule implementation
-        delegatorModuleImplementation = new DelegatorModule(address(delegationManager));
+        // Deploy DeleGatorModule implementation
+        delegatorModuleImplementation = new DeleGatorModule(address(delegationManager));
 
-        // Deploy DelegatorModule clone for this safe
+        // Deploy DeleGatorModule clone for this safe
         bytes memory args = abi.encodePacked(address(safe));
         bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
         address clone = LibClone.cloneDeterministic(address(delegatorModuleImplementation), args, salt);
-        delegatorModule = DelegatorModule(clone);
+        delegatorModule = DeleGatorModule(clone);
 
         // Enable the module in the safe
         vm.prank(safeOwner);
@@ -270,7 +270,7 @@ contract DelegatorModuleIntegrationTest is Test {
         bytes32 salt2 = keccak256("delegate-safe");
         address delegateClone =
             LibClone.cloneDeterministic(address(delegatorModuleImplementation), abi.encodePacked(address(delegateSafe)), salt2);
-        DelegatorModule delegateSafeModule = DelegatorModule(delegateClone);
+        DeleGatorModule delegateSafeModule = DeleGatorModule(delegateClone);
 
         vm.prank(delegate);
         delegateSafe.enableModule(address(delegateSafeModule));
@@ -344,7 +344,7 @@ contract DelegatorModuleIntegrationTest is Test {
         address safe2Clone = LibClone.cloneDeterministic(
             address(delegatorModuleImplementation), abi.encodePacked(address(safe2)), keccak256("safe2")
         );
-        DelegatorModule safe2Module = DelegatorModule(safe2Clone);
+        DeleGatorModule safe2Module = DeleGatorModule(safe2Clone);
 
         vm.prank(safe2OwnerAddr);
         safe2.enableModule(address(safe2Module));

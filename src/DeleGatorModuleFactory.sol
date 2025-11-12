@@ -3,12 +3,12 @@ pragma solidity ^0.8.13;
 
 import { LibClone } from "@solady/utils/LibClone.sol";
 
-import { DelegatorModule } from "./DelegatorModule.sol";
+import { DeleGatorModule } from "./DeleGatorModule.sol";
 
-/// @notice Factory for deploying cheap DelegatorModule clones per Safe.
-/// @dev The DelegatorModule is a clone of the DelegatorModule implementation, where the DelegationManager is an immutable variable
+/// @notice Factory for deploying cheap DeleGatorModule clones per Safe.
+/// @dev The DeleGatorModule is a clone of the DeleGatorModule implementation, where the DelegationManager is an immutable variable
 /// @dev and the Safe address is an immutable argument
-contract DelegatorModuleFactory {
+contract DeleGatorModuleFactory {
     address public immutable implementation;
     address public immutable delegationManager;
 
@@ -18,10 +18,10 @@ contract DelegatorModuleFactory {
     /// @param _delegationManager The address of the trusted DelegationManager
     constructor(address _delegationManager) {
         delegationManager = _delegationManager;
-        implementation = address(new DelegatorModule(_delegationManager));
+        implementation = address(new DeleGatorModule(_delegationManager));
     }
 
-    /// @notice Deploys a DelegatorModule clone for a given safe
+    /// @notice Deploys a DeleGatorModule clone for a given safe
     /// @param safe The address of the Safe contract
     /// @param salt The salt for CREATE2
     /// @return module The address of the deployed module
@@ -31,7 +31,7 @@ contract DelegatorModuleFactory {
         emit ModuleDeployed(safe, implementation, module);
     }
 
-    /// @notice Predicts the address of a DelegatorModule clone
+    /// @notice Predicts the address of a DeleGatorModule clone
     /// @param safe The address of the Safe contract
     /// @param salt The salt for CREATE2
     /// @return predicted The predicted address
