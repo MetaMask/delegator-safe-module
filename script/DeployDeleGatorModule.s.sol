@@ -2,7 +2,6 @@
 pragma solidity 0.8.23;
 
 import { Script } from "forge-std/Script.sol";
-import { DeleGatorModule } from "../src/DeleGatorModule.sol";
 import { console2 } from "forge-std/console2.sol";
 import { DeleGatorModuleFactory } from "../src/DeleGatorModuleFactory.sol";
 
