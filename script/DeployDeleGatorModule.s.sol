@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: MIT AND Apache-2.0
+pragma solidity 0.8.23;
+
+import { Script } from "forge-std/Script.sol";
+import { console2 } from "forge-std/console2.sol";
+import { DeleGatorModuleFactory } from "../src/DeleGatorModuleFactory.sol";
+
+/**
+ * @title DeployDeleGatorModule
+ * @notice Script to deploy the DeleGatorModule using environment variables for configuration
+ * @dev Required: DELEGATION_MANAGER, SAFE_ADDRESS, DEPLOYER_PRIVATE_KEY, and SALT environment variables
+ * @dev Note: Use a salt shorter than 32 bytes for deterministic addresses
+ * @dev To run the script: $ forge script script/DeployDeleGatorModule.s.sol --rpc-url <your_rpc_url> --broadcast
+ */
+contract DeployDeleGatorModule is Script {
+    function run() public returns (address deployedModule) {
+        bytes32 salt = bytes32(abi.encodePacked(vm.envString("SALT")));
+
+        // Load environment variables
+        address delegationManager = vm.envAddress("DELEGATION_MANAGER");
+        address safeAddress = vm.envAddress("SAFE_ADDRESS");
+        uint256 PrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
+        // Start broadcast for deployment transaction
+        vm.startBroadcast(PrivateKey);
+
+        // Deploy the factory (or use an existing one)
+        DeleGatorModuleFactory factory;
+        if (factoryAddress == address(0)) {
+            factory = new DeleGatorModuleFactory(delegationManager);
+            console2.log("Deployed new DeleGatorModuleFactory at:", address(factory));
+        } else {
+            factory = DeleGatorModuleFactory(factoryAddress);
+            console2.log("Using existing DeleGatorModuleFactory at:", factoryAddress);
+        }
+
+        // Check if module already exists at predicted address
+        address predictedAddress = factory.predictAddress(safeAddress, salt);
+
+        if (predictedAddress.code.length > 0) {
+            // Module already deployed
+            console2.log("DeleGatorModule already exists at:", predictedAddress);
+            deployedModule = predictedAddress;
+        } else {
+            // Deploy the DeleGatorModule clone via the factory
+            deployedModule = factory.deploy(safeAddress, salt);
+            console2.log("Deployed new DeleGatorModule at:", deployedModule);
+        }
+
+        // End broadcast
+        vm.stopBroadcast();
+
+        // Log deployment information
+        console2.log("==========================================");
+        console2.log("DeleGatorModuleFactory:", address(factory));
+        console2.log("DeleGatorModule:", deployedModule);
+        console2.log("DelegationManager:", delegationManager);
+        console2.log("Safe Address:", safeAddress);
+        console2.log("==========================================");
+        console2.log("Next Steps:");
+        console2.log("1. Enable the module in the Safe UI using the transaction builder:");
+        console2.log("   - Contract to call:", safeAddress);
+        console2.log("   - Method: enableModule");
+        console2.log("   - moduleAddress parameter:", deployedModule);
+        console2.log("==========================================");
+
+        return deployedModule;
+    }
+}

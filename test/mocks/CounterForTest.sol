@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 
-pragma solidity ^0.8.13;
+pragma solidity 0.8.23;
 
 /// @title CounterForTest
 /// @notice A simple counter contract used for testing purposes
@@ -9,9 +9,12 @@ contract CounterForTest {
     /// @notice The current count value
     uint256 public count;
 
+    /// @notice Custom error for testing revert behavior
+    error CounterError(string message);
+
     /// @notice Increments the counter by 1
-    /// @dev External function that increases count by 1
-    function increment() external {
+    /// @dev External function that increases count by 1, can receive ETH
+    function increment() external payable {
         count += 1;
     }
 
@@ -21,4 +24,13 @@ contract CounterForTest {
     function getCount() external view returns (uint256) {
         return count;
     }
+
+    /// @notice Reverts with a custom error message for testing
+    /// @dev Used to test revert reason bubbling in execute functions
+    function revertWithMessage() external pure {
+        revert CounterError("Test revert message");
+    }
+
+    /// @notice Allows the contract to receive ETH
+    receive() external payable { }
 }

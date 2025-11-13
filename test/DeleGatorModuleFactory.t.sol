@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
-pragma solidity ^0.8.13;
+pragma solidity 0.8.23;
 
 import { Test } from "forge-std/Test.sol";
-import { DelegatorModuleFactory } from "../src/DelegatorModuleFactory.sol";
-import { DelegatorModule } from "../src/DelegatorModule.sol";
+import { DeleGatorModuleFactory } from "../src/DeleGatorModuleFactory.sol";
+import { DeleGatorModule } from "../src/DeleGatorModule.sol";
 
 contract MockSafe { }
 
 contract MockDelegationManager { }
 
-contract DelegatorModuleFactoryTest is Test {
-    DelegatorModuleFactory public factory;
+contract DeleGatorModuleFactoryTest is Test {
+    DeleGatorModuleFactory public factory;
     MockSafe public mockSafe;
     MockDelegationManager public mockManager;
 
     function setUp() public {
         mockSafe = new MockSafe();
         mockManager = new MockDelegationManager();
-        factory = new DelegatorModuleFactory(address(mockManager));
+        factory = new DeleGatorModuleFactory(address(mockManager));
     }
 
     function test_DeploysCloneWithCorrectArgs() public {
         bytes32 salt = keccak256("test_salt");
         address module = factory.deploy(address(mockSafe), salt);
-        DelegatorModule deployed = DelegatorModule(module);
+        DeleGatorModule deployed = DeleGatorModule(module);
         assertEq(deployed.delegationManager(), address(mockManager));
         assertEq(deployed.safe(), address(mockSafe));
     }

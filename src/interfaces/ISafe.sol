@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
-pragma solidity ^0.8.13;
+pragma solidity 0.8.23;
 
 import { Enum } from "lib/safe-smart-account/contracts/common/Enum.sol";
 
