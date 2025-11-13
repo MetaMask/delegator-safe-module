@@ -49,8 +49,10 @@ Call `disableDelegation` on the DelegationManager via the Safe's `execute` funct
 
 ## FAQ
 
-**Q: Can I use my Safe as a delegate?**  
-A: Yes, but with limitations. The Safe can call `redeemDelegations` directly but doesn't support `executeFromExecutor`. It is recommended to use the DeleGatorModule as the delegate instead, unless there is a specific technical requirement for your use case.
+**Can I use my Safe as a delegate?**
 
-**Q: What signature schemes are supported?**  
-A: All signature schemes supported by your Safe (EOA, multisig, EIP-1271, etc.).
+- ⚠️ **Warning:** When delegating to a Safe, you should use the Safe's DeleGatorModule as the delegate, not the Safe itself. While a Safe can call `redeemDelegations` directly, it doesn't support `executeFromExecutor`, which limits its functionality as a delegate. Always set `delegation.delegate` to the DeleGatorModule address, not the Safe address.
+
+**What signature schemes are supported?**
+
+- All signature schemes supported by your Safe (EOA, multisig, EIP-1271, etc.).

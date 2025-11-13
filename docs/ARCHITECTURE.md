@@ -13,42 +13,42 @@ Technical deep dive into the system design and implementation.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Safe Wallet                          │
+│                         Safe Wallet                         │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  - Owns Assets (ETH, ERC20, NFTs)                      │ │
-│  │  - Validates Signatures                                 │ │
-│  │  - Executes Transactions                                │ │
-│  │  - Controls Module via execute()                        │ │
-│  └─────────────────┬───────────────────────────────────────┘ │
-└────────────────────┼─────────────────────────────────────────┘
+│  │  - Validates Signatures                                │ │
+│  │  - Executes Transactions                               │ │
+│  │  - Controls Module via execute()                       │ │
+│  └─────────────────┬──────────────────────────────────────┘ │
+└────────────────────┼────────────────────────────────────────┘
                      │ execTransactionFromModule()
                      │ isValidSignature()
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     DeleGatorModule                          │
+│                     DeleGatorModule                         │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  Interfaces:                                            │ │
+│  │  Interfaces:                                           │ │
 │  │  ├─ IDeleGatorCore (delegation interface)              │ │
 │  │  ├─ IERC1271 (signature validation)                    │ │
 │  │  └─ IERC165 (interface detection)                      │ │
-│  │                                                          │ │
-│  │  Functions:                                             │ │
+│  │                                                        │ │
+│  │  Functions:                                            │ │
 │  │  ├─ executeFromExecutor() [onlyDelegationManager]      │ │
 │  │  ├─ execute() [onlySafe]                               │ │
 │  │  ├─ isValidSignature() [view]                          │ │
-│  │  └─ safe() [view]                                       │ │
-│  └─────────────────┬───────────────────────────────────────┘ │
-└────────────────────┼─────────────────────────────────────────┘
+│  │  └─ safe() [view]                                      │ │
+│  └─────────────────┬──────────────────────────────────────┘ │
+└────────────────────┼────────────────────────────────────────┘
                      │
                      │ executeFromExecutor() only
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   DelegationManager                          │
+│                   DelegationManager                         │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  - Validates Delegations                                │ │
-│  │  - Enforces Caveats                                     │ │
-│  │  - Calls executeFromExecutor()                          │ │
-│  │  - Manages Delegation Lifecycle                         │ │
+│  │  - Validates Delegations                               │ │
+│  │  - Enforces Caveats                                    │ │
+│  │  - Calls executeFromExecutor()                         │ │
+│  │  - Manages Delegation Lifecycle                        │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -59,7 +59,7 @@ Technical deep dive into the system design and implementation.
 
 Each Safe gets its own DeleGatorModule instance via LibClone:
 
-```solidity
+```
 ┌──────────────────────────────────────────────────────────┐
 │  DeleGatorModule Implementation                          │
 │  (Single deployment, immutable)                          │
