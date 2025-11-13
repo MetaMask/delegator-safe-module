@@ -31,7 +31,15 @@ contract DeployDeleGatorModule is Script {
             console2.log("Deployed new DeleGatorModuleFactory at:", address(factory));
         } else {
             factory = DeleGatorModuleFactory(factoryAddress);
+            address factoryDelegationManager = factory.delegationManager();
+            if (factoryDelegationManager != delegationManager) {
+                console2.log("ERROR: Factory delegation manager mismatch!");
+                console2.log("Expected:", delegationManager);
+                console2.log("Factory has:", factoryDelegationManager);
+                revert("DelegationManager mismatch: factory uses different delegation manager");
+            }
             console2.log("Using existing DeleGatorModuleFactory at:", factoryAddress);
+            console2.log("Verified delegation manager:", delegationManager);
         }
 
         // Check if module already exists at predicted address
