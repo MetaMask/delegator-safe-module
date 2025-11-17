@@ -295,6 +295,17 @@ contract DeleGatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests that execution reverts when called with non-zero msg.value
+    function test_ExecuteFromExecutor_RevertOnNonZeroValue() public {
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        vm.deal(address(mockDelegationManager), 1 ether);
+        vm.prank(address(mockDelegationManager));
+        vm.expectRevert(DeleGatorModule.NonZeroValue.selector);
+        delegatorModule.executeFromExecutor{value: 1 ether}(mode, executionCalldata);
+    }
+
     ////////////////////////////// Execute Tests //////////////////////////////
 
     /// @notice Tests successful execution of a single transaction via execute function called by Safe

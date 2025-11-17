@@ -79,6 +79,11 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      */
     error ImplementationNotUsable();
 
+    /**
+     * @notice Error thrown when function is called with non-zero msg.value
+     */
+    error NonZeroValue();
+
     ////////////////////////////// Modifiers //////////////////////////////
 
     /**
@@ -142,6 +147,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
         onlyDelegationManager
         returns (bytes[] memory returnData_)
     {
+        if (msg.value != 0) revert NonZeroValue();
         (CallType callType_, ExecType execType_,,) = _mode.decode();
 
         // Check if calltype is batch or single
