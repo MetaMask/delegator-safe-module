@@ -42,5 +42,16 @@ contract DeleGatorModuleFactoryTest is Test {
         factory.deploy(address(mockSafe), salt);
     }
 
+    function test_RevertWhen_ModuleAlreadyDeployed() public {
+        bytes32 salt = keccak256("duplicate_salt");
+        
+        // Deploy module first time
+        address module = factory.deploy(address(mockSafe), salt);
+        
+        // Attempt to deploy again with same salt - should revert
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModuleFactory.ModuleAlreadyDeployed.selector, module));
+        factory.deploy(address(mockSafe), salt);
+    }
+
     event ModuleDeployed(address indexed safe, address indexed implementation, address module);
 }

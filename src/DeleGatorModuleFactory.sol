@@ -14,6 +14,9 @@ contract DeleGatorModuleFactory {
 
     event ModuleDeployed(address indexed safe, address indexed implementation, address module);
 
+    /// @notice Error thrown when attempting to deploy a module that already exists
+    error ModuleAlreadyDeployed(address module);
+
     /// @notice Constructor for the factory
     /// @param _delegationManager The address of the trusted DelegationManager
     constructor(address _delegationManager) {
@@ -27,6 +30,13 @@ contract DeleGatorModuleFactory {
     /// @return module The address of the deployed module
     function deploy(address safe, bytes32 salt) external returns (address module) {
         bytes memory args = abi.encodePacked(safe); // 20 bytes
+        module = LibClone.predictDeterministicAddress(implementation, args, salt, address(this));
+
+        // Revert if module already exists at predicted address
+        if (module.code.length > 0) {
+            revert ModuleAlreadyDeployed(module);
+        }
+
         module = LibClone.cloneDeterministic(implementation, args, salt);
         emit ModuleDeployed(safe, implementation, module);
     }

@@ -42,18 +42,10 @@ contract DeployDeleGatorModule is Script {
             console2.log("Verified delegation manager:", delegationManager);
         }
 
-        // Check if module already exists at predicted address
-        address predictedAddress = factory.predictAddress(safeAddress, salt);
-
-        if (predictedAddress.code.length > 0) {
-            // Module already deployed
-            console2.log("DeleGatorModule already exists at:", predictedAddress);
-            deployedModule = predictedAddress;
-        } else {
-            // Deploy the DeleGatorModule clone via the factory
-            deployedModule = factory.deploy(safeAddress, salt);
-            console2.log("Deployed new DeleGatorModule at:", deployedModule);
-        }
+        // Deploy the DeleGatorModule clone via the factory
+        // The factory will revert if the module already exists at the predicted address
+        deployedModule = factory.deploy(safeAddress, salt);
+        console2.log("Deployed DeleGatorModule at:", deployedModule);
 
         // End broadcast
         vm.stopBroadcast();
