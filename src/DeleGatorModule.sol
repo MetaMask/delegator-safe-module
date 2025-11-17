@@ -8,7 +8,7 @@ import { LibClone } from "@solady/utils/LibClone.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { ExecutionHelper } from "@erc7579/core/ExecutionHelper.sol";
-import { Enum } from "@safe-smart-account/common/Enum.sol";
+import { Enum } from "@safe-smart-account/libraries/Enum.sol";
 import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";

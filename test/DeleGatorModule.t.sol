@@ -5,7 +5,7 @@ import { Test } from "forge-std/Test.sol";
 import { ModeLib, CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT, MODE_DEFAULT, ModePayload } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { ExecutionHelper } from "@erc7579/core/ExecutionHelper.sol";
-import { Enum } from "@safe-smart-account/common/Enum.sol";
+import { Enum } from "@safe-smart-account/libraries/Enum.sol";
 import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
