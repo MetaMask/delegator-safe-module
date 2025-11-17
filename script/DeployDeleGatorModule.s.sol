@@ -19,10 +19,10 @@ contract DeployDeleGatorModule is Script {
         // Load environment variables
         address delegationManager = vm.envAddress("DELEGATION_MANAGER");
         address safeAddress = vm.envAddress("SAFE_ADDRESS");
-        uint256 PrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
         // Start broadcast for deployment transaction
-        vm.startBroadcast(PrivateKey);
+        vm.startBroadcast(deployerPrivateKey);
 
         // Deploy the factory (or use an existing one)
         DeleGatorModuleFactory factory;
