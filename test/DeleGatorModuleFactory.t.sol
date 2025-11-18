@@ -37,21 +37,29 @@ contract DeleGatorModuleFactoryTest is Test {
 
     function test_EmitsModuleDeployedEvent() public {
         bytes32 salt = keccak256("event_salt");
-        vm.expectEmit(true, true, true, false);
-        emit ModuleDeployed(address(mockSafe), factory.implementation(), address(0));
-        factory.deploy(address(mockSafe), salt);
+        address predicted = factory.predictAddress(address(mockSafe), salt);
+        vm.expectEmit(true, true, true, true);
+        emit ModuleDeployed(address(mockSafe), factory.implementation(), predicted, salt);
+        address module = factory.deploy(address(mockSafe), salt);
+        assertEq(module, predicted);
     }
 
-    function test_RevertWhen_ModuleAlreadyDeployed() public {
+    function test_EmitsModuleAlreadyExistsEvent() public {
         bytes32 salt = keccak256("duplicate_salt");
-        
+
         // Deploy module first time
         address module = factory.deploy(address(mockSafe), salt);
-        
-        // Attempt to deploy again with same salt - should revert
-        vm.expectRevert(abi.encodeWithSelector(DeleGatorModuleFactory.ModuleAlreadyDeployed.selector, module));
-        factory.deploy(address(mockSafe), salt);
+        assertEq(module.code.length > 0, true);
+
+        // Attempt to deploy again with same salt - should emit event and return existing address
+        vm.expectEmit(true, true, false, true);
+        emit ModuleAlreadyExists(address(mockSafe), module, salt);
+        address returnedModule = factory.deploy(address(mockSafe), salt);
+
+        // Should return the same module address
+        assertEq(returnedModule, module);
     }
 
-    event ModuleDeployed(address indexed safe, address indexed implementation, address module);
+    event ModuleDeployed(address indexed safe, address indexed implementation, address module, bytes32 salt);
+    event ModuleAlreadyExists(address indexed safe, address module, bytes32 salt);
 }
