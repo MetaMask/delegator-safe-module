@@ -8,7 +8,7 @@ import { LibClone } from "@solady/utils/LibClone.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { ExecutionHelper } from "@erc7579/core/ExecutionHelper.sol";
-import { Enum } from "@safe-smart-account/common/Enum.sol";
+import { Enum } from "@safe-smart-account/libraries/Enum.sol";
 import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
@@ -79,6 +79,11 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      */
     error ImplementationNotUsable();
 
+    /**
+     * @notice Error thrown when function is called with non-zero msg.value
+     */
+    error NonZeroValue();
+
     ////////////////////////////// Modifiers //////////////////////////////
 
     /**
@@ -105,7 +110,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @dev Check that the caller is the stored Safe contract.
      */
     modifier onlySafe() {
-        if (msg.sender != safe()) revert NotSafe();
+        if (msg.sender != _safe()) revert NotSafe();
         _;
     }
 
@@ -142,6 +147,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
         onlyDelegationManager
         returns (bytes[] memory returnData_)
     {
+        if (msg.value != 0) revert NonZeroValue();
         (CallType callType_, ExecType execType_,,) = _mode.decode();
 
         // Check if calltype is batch or single
@@ -175,7 +181,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @return magicValue_ EIP1271_MAGIC_VALUE (0x1626ba7e) if valid, or SIG_VALIDATION_FAILED (0xffffffff) if invalid
      */
     function isValidSignature(bytes32 _hash, bytes calldata _signature) external view onlyProxy returns (bytes4 magicValue_) {
-        return IERC1271(safe()).isValidSignature(_hash, _signature);
+        return IERC1271(_safe()).isValidSignature(_hash, _signature);
     }
 
     /**
@@ -218,8 +224,8 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @dev Each module clone is bound to a specific Safe address
      * @return The address of the Safe contract
      */
-    function safe() public view onlyProxy returns (address) {
-        return _getSafeAddressFromArgs();
+    function safe() external view onlyProxy returns (address) {
+        return _safe();
     }
 
     /**
@@ -277,7 +283,8 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
         returns (bytes memory returnData_)
     {
         bool success_;
-        (success_, returnData_) = ISafe(safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
+        (success_, returnData_) =
+            ISafe(_safe()).execTransactionFromModuleReturnData(_target, _value, _callData, Enum.Operation.Call);
         _checkSuccess(success_, returnData_);
         return returnData_;
     }
@@ -305,7 +312,7 @@ contract DeleGatorModule is ExecutionHelper, IDeleGatorCore, IERC165 {
      * @dev The Safe address is stored as immutable args using the minimal proxy pattern
      * @return safeAddress_ The address of the Safe contract that this module is bound to
      */
-    function _getSafeAddressFromArgs() internal view returns (address safeAddress_) {
+    function _safe() internal view returns (address safeAddress_) {
         safeAddress_ = address(bytes20(LibClone.argsOnClone(address(this))));
     }
 }

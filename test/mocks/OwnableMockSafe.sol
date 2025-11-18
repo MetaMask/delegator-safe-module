@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.23;
 
-import { Enum } from "@safe-smart-account/common/Enum.sol";
+import { Enum } from "@safe-smart-account/libraries/Enum.sol";
 import { ISafe } from "../../src/interfaces/ISafe.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";

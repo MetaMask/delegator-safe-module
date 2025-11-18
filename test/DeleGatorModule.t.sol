@@ -5,7 +5,7 @@ import { Test } from "forge-std/Test.sol";
 import { ModeLib, CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT, MODE_DEFAULT, ModePayload } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import { ExecutionHelper } from "@erc7579/core/ExecutionHelper.sol";
-import { Enum } from "@safe-smart-account/common/Enum.sol";
+import { Enum } from "@safe-smart-account/libraries/Enum.sol";
 import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
 import { ModeCode, CallType, ExecType, Execution } from "@delegation-framework/utils/Types.sol";
@@ -295,6 +295,17 @@ contract DeleGatorModuleTest is Test {
         delegatorModule.executeFromExecutor(mode, executionCalldata);
     }
 
+    /// @notice Tests that execution reverts when called with non-zero msg.value
+    function test_ExecuteFromExecutor_RevertOnNonZeroValue() public {
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(address(counter), 0, "");
+
+        vm.deal(address(mockDelegationManager), 1 ether);
+        vm.prank(address(mockDelegationManager));
+        vm.expectRevert(DeleGatorModule.NonZeroValue.selector);
+        delegatorModule.executeFromExecutor{ value: 1 ether }(mode, executionCalldata);
+    }
+
     ////////////////////////////// Execute Tests //////////////////////////////
 
     /// @notice Tests successful execution of a single transaction via execute function called by Safe
@@ -335,6 +346,35 @@ contract DeleGatorModuleTest is Test {
         vm.prank(address(mockSafe));
         delegatorModule.execute(mode, executionCalldata);
 
+        assertEq(recipient.balance, recipientBalanceBefore + value);
+    }
+
+    /// @notice Tests execute with ETH sent directly via msg.value
+    /// @dev Sends 1 ETH directly to execute function via msg.value, then transfers exactly 1 ETH using execution params
+    function test_Execute_WithMsgValue() public {
+        address payable recipient = payable(address(0x5678));
+        uint256 recipientBalanceBefore = recipient.balance;
+
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        uint256 value = 1 ether;
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(recipient, value, "");
+
+        vm.deal(address(mockSafe), 1 ether);
+
+        // Verify the module balance is 0 before the execution
+        assertEq(address(delegatorModule).balance, 0);
+
+        // Send 1 ETH directly to execute function via msg.value
+        vm.prank(address(mockSafe));
+        delegatorModule.execute{ value: 1 ether }(mode, executionCalldata);
+
+        // Verify the Safe balance: started with 1 ETH, sent 1 ETH to recipient = 0 ETH
+        assertEq(address(mockSafe).balance, 0);
+
+        // Verify the module balance is 0 after the execution
+        assertEq(address(delegatorModule).balance, 0);
+
+        // Verify the recipient received the ETH from the execution
         assertEq(recipient.balance, recipientBalanceBefore + value);
     }
 

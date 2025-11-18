@@ -12,7 +12,11 @@ contract DeleGatorModuleFactory {
     address public immutable implementation;
     address public immutable delegationManager;
 
-    event ModuleDeployed(address indexed safe, address indexed implementation, address module);
+    /// @notice Emitted when a module is deployed
+    event ModuleDeployed(address indexed safe, address indexed implementation, address module, bytes32 salt);
+
+    /// @notice Emitted when a module is already deployed
+    event ModuleAlreadyExists(address indexed safe, address module, bytes32 salt);
 
     /// @notice Constructor for the factory
     /// @param _delegationManager The address of the trusted DelegationManager
@@ -22,21 +26,29 @@ contract DeleGatorModuleFactory {
     }
 
     /// @notice Deploys a DeleGatorModule clone for a given safe
-    /// @param safe The address of the Safe contract
-    /// @param salt The salt for CREATE2
-    /// @return module The address of the deployed module
-    function deploy(address safe, bytes32 salt) external returns (address module) {
-        bytes memory args = abi.encodePacked(safe); // 20 bytes
-        module = LibClone.cloneDeterministic(implementation, args, salt);
-        emit ModuleDeployed(safe, implementation, module);
+    /// @param _safe The address of the Safe contract
+    /// @param _salt The salt for CREATE2
+    /// @return module_ The address of the deployed module (or existing module if already deployed)
+    function deploy(address _safe, bytes32 _salt) external returns (address module_) {
+        bytes memory args_ = abi.encodePacked(_safe); // 20 bytes
+        module_ = LibClone.predictDeterministicAddress(implementation, args_, _salt, address(this));
+
+        // If module already exists, emit event and return existing address
+        if (module_.code.length > 0) {
+            emit ModuleAlreadyExists(_safe, module_, _salt);
+            return module_;
+        }
+
+        module_ = LibClone.cloneDeterministic(implementation, args_, _salt);
+        emit ModuleDeployed(_safe, implementation, module_, _salt);
     }
 
     /// @notice Predicts the address of a DeleGatorModule clone
-    /// @param safe The address of the Safe contract
-    /// @param salt The salt for CREATE2
-    /// @return predicted The predicted address
-    function predictAddress(address safe, bytes32 salt) external view returns (address predicted) {
-        bytes memory args = abi.encodePacked(safe);
-        predicted = LibClone.predictDeterministicAddress(implementation, args, salt, address(this));
+    /// @param _safe The address of the Safe contract
+    /// @param _salt The salt for CREATE2
+    /// @return predicted_ The predicted address
+    function predictAddress(address _safe, bytes32 _salt) external view returns (address predicted_) {
+        bytes memory args_ = abi.encodePacked(_safe);
+        predicted_ = LibClone.predictDeterministicAddress(implementation, args_, _salt, address(this));
     }
 }

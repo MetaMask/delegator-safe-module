@@ -19,10 +19,10 @@ contract DeployDeleGatorModule is Script {
         // Load environment variables
         address delegationManager = vm.envAddress("DELEGATION_MANAGER");
         address safeAddress = vm.envAddress("SAFE_ADDRESS");
-        uint256 PrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
         // Start broadcast for deployment transaction
-        vm.startBroadcast(PrivateKey);
+        vm.startBroadcast(deployerPrivateKey);
 
         // Deploy the factory (or use an existing one)
         DeleGatorModuleFactory factory;
@@ -31,21 +31,21 @@ contract DeployDeleGatorModule is Script {
             console2.log("Deployed new DeleGatorModuleFactory at:", address(factory));
         } else {
             factory = DeleGatorModuleFactory(factoryAddress);
+            address factoryDelegationManager = factory.delegationManager();
+            if (factoryDelegationManager != delegationManager) {
+                console2.log("ERROR: Factory delegation manager mismatch!");
+                console2.log("Expected:", delegationManager);
+                console2.log("Factory has:", factoryDelegationManager);
+                revert("DelegationManager mismatch: factory uses different delegation manager");
+            }
             console2.log("Using existing DeleGatorModuleFactory at:", factoryAddress);
+            console2.log("Verified delegation manager:", delegationManager);
         }
 
-        // Check if module already exists at predicted address
-        address predictedAddress = factory.predictAddress(safeAddress, salt);
-
-        if (predictedAddress.code.length > 0) {
-            // Module already deployed
-            console2.log("DeleGatorModule already exists at:", predictedAddress);
-            deployedModule = predictedAddress;
-        } else {
-            // Deploy the DeleGatorModule clone via the factory
-            deployedModule = factory.deploy(safeAddress, salt);
-            console2.log("Deployed new DeleGatorModule at:", deployedModule);
-        }
+        // Deploy the DeleGatorModule clone via the factory
+        // The factory will revert if the module already exists at the predicted address
+        deployedModule = factory.deploy(safeAddress, salt);
+        console2.log("Deployed DeleGatorModule at:", deployedModule);
 
         // End broadcast
         vm.stopBroadcast();
