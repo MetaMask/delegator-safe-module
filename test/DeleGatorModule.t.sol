@@ -303,7 +303,7 @@ contract DeleGatorModuleTest is Test {
         vm.deal(address(mockDelegationManager), 1 ether);
         vm.prank(address(mockDelegationManager));
         vm.expectRevert(DeleGatorModule.NonZeroValue.selector);
-        delegatorModule.executeFromExecutor{value: 1 ether}(mode, executionCalldata);
+        delegatorModule.executeFromExecutor{ value: 1 ether }(mode, executionCalldata);
     }
 
     ////////////////////////////// Execute Tests //////////////////////////////
@@ -346,6 +346,35 @@ contract DeleGatorModuleTest is Test {
         vm.prank(address(mockSafe));
         delegatorModule.execute(mode, executionCalldata);
 
+        assertEq(recipient.balance, recipientBalanceBefore + value);
+    }
+
+    /// @notice Tests execute with ETH sent directly via msg.value
+    /// @dev Sends 1 ETH directly to execute function via msg.value, then transfers exactly 1 ETH using execution params
+    function test_Execute_WithMsgValue() public {
+        address payable recipient = payable(address(0x5678));
+        uint256 recipientBalanceBefore = recipient.balance;
+
+        ModeCode mode = ModeLib.encodeSimpleSingle();
+        uint256 value = 1 ether;
+        bytes memory executionCalldata = ExecutionLib.encodeSingle(recipient, value, "");
+
+        vm.deal(address(mockSafe), 1 ether);
+
+        // Verify the module balance is 0 before the execution
+        assertEq(address(delegatorModule).balance, 0);
+
+        // Send 1 ETH directly to execute function via msg.value
+        vm.prank(address(mockSafe));
+        delegatorModule.execute{ value: 1 ether }(mode, executionCalldata);
+
+        // Verify the Safe balance: started with 1 ETH, sent 1 ETH to recipient = 0 ETH
+        assertEq(address(mockSafe).balance, 0);
+
+        // Verify the module balance is 0 after the execution
+        assertEq(address(delegatorModule).balance, 0);
+
+        // Verify the recipient received the ETH from the execution
         assertEq(recipient.balance, recipientBalanceBefore + value);
     }
 
