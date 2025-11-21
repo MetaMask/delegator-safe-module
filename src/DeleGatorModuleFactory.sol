@@ -12,11 +12,9 @@ contract DeleGatorModuleFactory {
     address public immutable implementation;
     address public immutable delegationManager;
 
-    /// @notice Emitted when a module is deployed
-    event ModuleDeployed(address indexed safe, address indexed implementation, address module, bytes32 salt);
-
-    /// @notice Emitted when a module is already deployed
-    event ModuleAlreadyExists(address indexed safe, address module, bytes32 salt);
+    /// @notice Emitted when a module deployment is attempted
+    /// @param alreadyDeployed True if the module was already deployed, false if it was newly deployed
+    event ModuleDeployed(address indexed safe, address indexed implementation, address module, bytes32 salt, bool alreadyDeployed);
 
     /// @notice Constructor for the factory
     /// @param _delegationManager The address of the trusted DelegationManager
@@ -29,18 +27,12 @@ contract DeleGatorModuleFactory {
     /// @param _safe The address of the Safe contract
     /// @param _salt The salt for CREATE2
     /// @return module_ The address of the deployed module (or existing module if already deployed)
-    function deploy(address _safe, bytes32 _salt) external returns (address module_) {
+    /// @return alreadyDeployed_ True if the module was already deployed, false if it was newly deployed
+    function deploy(address _safe, bytes32 _salt) external returns (address module_, bool alreadyDeployed_) {
         bytes memory args_ = abi.encodePacked(_safe); // 20 bytes
-        module_ = LibClone.predictDeterministicAddress(implementation, args_, _salt, address(this));
+        (alreadyDeployed_, module_) = LibClone.createDeterministicClone(implementation, args_, _salt);
 
-        // If module already exists, emit event and return existing address
-        if (module_.code.length > 0) {
-            emit ModuleAlreadyExists(_safe, module_, _salt);
-            return module_;
-        }
-
-        module_ = LibClone.cloneDeterministic(implementation, args_, _salt);
-        emit ModuleDeployed(_safe, implementation, module_, _salt);
+        emit ModuleDeployed(_safe, implementation, module_, _salt, alreadyDeployed_);
     }
 
     /// @notice Predicts the address of a DeleGatorModule clone
