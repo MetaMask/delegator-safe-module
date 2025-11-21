@@ -72,7 +72,7 @@ contract DeleGatorModuleIntegrationTest is Test {
 
         // Deploy DeleGatorModule clone for this safe
         bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
-        address module = factory.deploy(address(safe), salt);
+        (address module,) = factory.deploy(address(safe), salt);
         delegatorModule = DeleGatorModule(module);
 
         // Enable the module in the safe
@@ -267,7 +267,7 @@ contract DeleGatorModuleIntegrationTest is Test {
     function test_ModuleToModuleDelegation() public {
         OwnableMockSafe delegateSafe = new OwnableMockSafe(delegate);
         bytes32 salt2 = keccak256("delegate-safe");
-        address delegateModule = factory.deploy(address(delegateSafe), salt2);
+        (address delegateModule,) = factory.deploy(address(delegateSafe), salt2);
         DeleGatorModule delegateSafeModule = DeleGatorModule(delegateModule);
 
         vm.prank(delegate);
@@ -339,7 +339,7 @@ contract DeleGatorModuleIntegrationTest is Test {
         address safe2OwnerAddr = vm.addr(safe2OwnerPk);
         OwnableMockSafe safe2 = new OwnableMockSafe(safe2OwnerAddr);
 
-        address safe2ModuleAddress = factory.deploy(address(safe2), keccak256("safe2"));
+        (address safe2ModuleAddress,) = factory.deploy(address(safe2), keccak256("safe2"));
         DeleGatorModule safe2Module = DeleGatorModule(safe2ModuleAddress);
 
         vm.prank(safe2OwnerAddr);
