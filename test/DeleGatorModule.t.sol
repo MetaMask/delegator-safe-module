@@ -39,7 +39,7 @@ contract DeleGatorModuleTest is Test {
         mockDelegationManager = new MockDelegationManager();
         factory = new DeleGatorModuleFactory(address(mockDelegationManager));
         bytes32 salt = keccak256(abi.encodePacked(address(this), block.timestamp));
-        address module = factory.deploy(address(mockSafe), salt);
+        (address module,) = factory.deploy(address(mockSafe), salt);
         delegatorModule = DeleGatorModule(module);
         counter = new CounterForTest();
 
@@ -63,7 +63,7 @@ contract DeleGatorModuleTest is Test {
 
         // Create a new safe and module for this test
         OwnableMockSafe testSafe = new OwnableMockSafe(signer);
-        address testModule = factory.deploy(address(testSafe), keccak256("test"));
+        (address testModule,) = factory.deploy(address(testSafe), keccak256("test"));
 
         // Create message and sign it
         bytes32 messageHash = keccak256("test message");
