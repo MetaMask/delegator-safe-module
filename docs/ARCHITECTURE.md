@@ -1,13 +1,14 @@
-# DeleGatorModule Architecture
+# DeleGatorModuleFallback Architecture
 
 Technical deep dive into the system design and implementation.
 
 ## Core Design Principles
 
-1. **Signature Agnostic:** All signature validation delegated to Safe
-2. **Minimal Trust:** Only DelegationManager has privileged access
-3. **Safe Context:** Delegated executions happen in Safe's context
-4. **Immutable Binding:** Each module instance bound to one Safe
+1. **Dual Role Architecture:** Module + FallbackHandler roles required
+2. **Safe as Delegator:** Safe address acts as delegator, not module address
+3. **Minimal Trust:** Only DelegationManager has privileged access
+4. **Safe Context:** Delegated executions happen in Safe's context
+5. **Immutable Binding:** Each module instance bound to one Safe and one trusted handler
 
 ## Component Architecture
 
@@ -18,50 +19,83 @@ Technical deep dive into the system design and implementation.
 │  │  - Owns Assets (ETH, ERC20, NFTs)                      │ │
 │  │  - Validates Signatures                                │ │
 │  │  - Executes Transactions                               │ │
-│  │  - Controls Module via execute()                       │ │
+│  │  - Fallback routes to ExtensibleFallbackHandler        │ │
 │  └─────────────────┬──────────────────────────────────────┘ │
 └────────────────────┼────────────────────────────────────────┘
-                     │ execTransactionFromModule()
-                     │ isValidSignature()
+                     │ fallback() → executeFromExecutor()
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     DeleGatorModule                         │
+│            ExtensibleFallbackHandler                        │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  Interfaces:                                           │ │
-│  │  ├─ IDeleGatorCore (delegation interface)              │ │
-│  │  ├─ IERC1271 (signature validation)                    │ │
-│  │  └─ IERC165 (interface detection)                      │ │
-│  │                                                        │ │
-│  │  Functions:                                            │ │
-│  │  ├─ executeFromExecutor() [onlyDelegationManager]      │ │
-│  │  ├─ execute() [onlySafe]                               │ │
-│  │  ├─ isValidSignature() [view]                          │ │
-│  │  └─ safe() [view]                                      │ │
+│  │  - Routes executeFromExecutor selector                  │ │
+│  │  - Calls registered handler (DeleGatorModuleFallback)   │ │
 │  └─────────────────┬──────────────────────────────────────┘ │
 └────────────────────┼────────────────────────────────────────┘
+                     │ handle(safe, sender, value, data)
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│              DeleGatorModuleFallback                        │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Interfaces:                                           │ │
+│  │  ├─ IFallbackMethod (fallback handler interface)        │ │
+│  │                                                        │ │
+│  │  Functions:                                            │ │
+│  │  ├─ handle() [onlyTrustedHandler, onlyDelegationManager]│ │
+│  │  ├─ executeFromExecutor() [onlySelf]                   │ │
+│  │  ├─ safe() [view, onlyProxy]                          │ │
+│  │  └─ trustedHandler() [view, onlyProxy]                 │ │
+│  └─────────────────┬──────────────────────────────────────┘ │
+└────────────────────┼────────────────────────────────────────┘
+                     │ execTransactionFromModuleReturnData()
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                         Safe Wallet                         │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  - Executes delegated transaction                      │ │
+│  │  - msg.sender = Safe (for target contract)             │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
                      │
-                     │ executeFromExecutor() only
+                     │ (original call)
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   DelegationManager                         │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  - Validates Delegations                               │ │
 │  │  - Enforces Caveats                                    │ │
-│  │  - Calls executeFromExecutor()                         │ │
+│  │  - Calls Safe.executeFromExecutor()                    │ │
 │  │  - Manages Delegation Lifecycle                        │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Dual Role Architecture
+
+`DeleGatorModuleFallback` serves **two distinct roles**:
+
+### 1. Safe Module Role
+
+- **Registration**: Enabled via `Safe.enableModule(moduleAddress)`
+- **Purpose**: Provides module authority to execute transactions
+- **Functionality**: Uses `execTransactionFromModuleReturnData()` to execute delegated transactions
+
+### 2. Fallback Handler Role (via ExtensibleFallbackHandler)
+
+- **Registration**: Registered via `ExtensibleFallbackHandler.setSafeMethod(selector, method)`
+- **Purpose**: Receives routed calls from `ExtensibleFallbackHandler` when `executeFromExecutor` is called
+- **Functionality**: Implements `IFallbackMethod.handle()` to process delegation redemptions
+
+**Both roles are required** - without module registration, execution fails. Without fallback handler registration, calls don't route to the module.
+
 ## Deployment Model
 
 ### Minimal Proxy Pattern
 
-Each Safe gets its own DeleGatorModule instance via LibClone:
+Each Safe gets its own `DeleGatorModuleFallback` instance via LibClone:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  DeleGatorModule Implementation                          │
+│  DeleGatorModuleFallback Implementation                  │
 │  (Single deployment, immutable)                          │
 └────────────────────┬─────────────────────────────────────┘
                      │ Clone via LibClone
@@ -70,6 +104,7 @@ Each Safe gets its own DeleGatorModule instance via LibClone:
    ┌─────────┐  ┌─────────┐  ┌─────────┐       ┌─────────┐
    │ Clone 1 │  │ Clone 2 │  │ Clone 3 │  ...  │ Clone N │
    │ Safe A  │  │ Safe B  │  │ Safe C  │       │ Safe N  │
+   │Handler A│  │Handler A│  │Handler B│       │Handler C│
    └─────────┘  └─────────┘  └─────────┘       └─────────┘
 ```
 
@@ -77,20 +112,24 @@ Each Safe gets its own DeleGatorModule instance via LibClone:
 
 - Minimal gas cost per deployment
 - Shared implementation reduces attack surface
-- Each clone bound to specific Safe via immutable args
+- Each clone bound to specific Safe and trusted handler via immutable args
 
 ### Immutable Arguments
 
-Safe address stored in clone's immutable arguments:
+Both Safe address and trusted handler address stored in clone's immutable arguments:
 
 ```solidity
 // Deployment
-bytes memory args = abi.encodePacked(safeAddress);
-address clone = LibClone.cloneDeterministic(implementation, args, salt);
+bytes memory args = abi.encodePacked(safeAddress, trustedHandlerAddress); // 40 bytes (20 + 20)
+address clone = LibClone.createDeterministicClone(implementation, args, salt);
 
 // Runtime retrieval
-function _getSafeAddressFromArgs() internal view returns (address) {
-    return address(bytes20(LibClone.argsOnClone(address(this))));
+function _getSafe() internal view returns (ISafe) {
+    return ISafe(payable(address(bytes20(LibClone.argsOnClone(address(this), 0, 20)))));
+}
+
+function _getTrustedHandler() internal view returns (address) {
+    return address(bytes20(LibClone.argsOnClone(address(this), 20, 40)));
 }
 ```
 
@@ -100,41 +139,83 @@ function _getSafeAddressFromArgs() internal view returns (address) {
 address public immutable delegationManager;  // Set in constructor
 ```
 
-- **DelegationManager:** Only address allowed to call `executeFromExecutor`
-- **Safe Address:** Stored in clone's immutable args (not in storage)
+- **DelegationManager:** Only address allowed to originate delegation redemption calls
+- **Safe Address:** Stored in clone's immutable args (bytes 0-19)
+- **Trusted Handler Address:** Stored in clone's immutable args (bytes 20-39)
 - **Zero mutable state:** No storage variables or configuration
 
 ## Access Control
 
-### Modifier: `onlyDelegationManager`
+### Modifier: `onlyTrustedHandler`
 
 ```solidity
-modifier onlyDelegationManager() {
-    if (msg.sender != delegationManager) revert NotDelegationManager();
+modifier onlyTrustedHandler() {
+    address trustedHandler_ = _getTrustedHandler();
+    if (msg.sender != trustedHandler_) revert NotCalledViaFallbackHandler();
+    _;
+}
+```
+
+**Applies to:** `handle()`  
+**Purpose:** Ensure only the trusted `ExtensibleFallbackHandler` can call `handle()`
+
+### Modifier: `onlyDelegationManager(address _sender)`
+
+```solidity
+modifier onlyDelegationManager(address _sender) {
+    if (_sender != delegationManager) revert NotDelegationManager();
+    _;
+}
+```
+
+**Applies to:** `handle()`  
+**Purpose:** Ensure only DelegationManager can originate delegation redemption calls
+
+### Modifier: `onlySelf`
+
+```solidity
+modifier onlySelf() {
+    if (msg.sender != address(this)) revert NotSelf();
     _;
 }
 ```
 
 **Applies to:** `executeFromExecutor()`  
-**Purpose:** Ensure only DelegationManager can redeem delegations
+**Purpose:** Ensure `executeFromExecutor()` can only be called internally via `this.executeFromExecutor()`
 
-### Modifier: `onlySafe`
+## Call Flow
 
-```solidity
-modifier onlySafe() {
-    if (msg.sender != safe()) revert NotSafe();
-    _;
-}
-```
-
-**Applies to:** `execute()`  
-**Purpose:** Ensure only the associated Safe can use direct execution
+1. **DelegationManager** calls `Safe.executeFromExecutor(mode, calldata)`
+2. **Safe** doesn't have this function, so `fallback()` is triggered
+3. **ExtensibleFallbackHandler** receives call, extracts selector, looks up handler
+4. **DeleGatorModuleFallback.handle()** is called with Safe, sender, value, data
+5. **handle()** validates and calls `this.executeFromExecutor()` (self-call)
+6. **executeFromExecutor()** decodes and calls `_executeOnSafe()`
+7. **_executeOnSafe()** uses module authority to execute via `Safe.execTransactionFromModuleReturnData()`
+8. **Target contract** receives call with `msg.sender = Safe`
 
 ## Interface Implementation
 
-### IDeleGatorCore
+### IFallbackMethod
 
-Required by Delegation Framework:
+Required by ExtensibleFallbackHandler:
+
+```solidity
+interface IFallbackMethod {
+    function handle(
+        ISafe safe,
+        address sender,
+        uint256 value,
+        bytes calldata data
+    ) external returns (bytes memory);
+}
+```
+
+**Implementation:** Validates call and routes to `executeFromExecutor()`
+
+### IDeleGatorCore (via fallback)
+
+The `executeFromExecutor` functionality is provided through the fallback mechanism:
 
 ```solidity
 interface IDeleGatorCore {
@@ -145,36 +226,7 @@ interface IDeleGatorCore {
 }
 ```
 
-**Implementation:** Forwards to Safe's module execution system
-
-### IERC1271
-
-Signature validation interface:
-
-```solidity
-interface IERC1271 {
-    function isValidSignature(
-        bytes32 hash,
-        bytes memory signature
-    ) external view returns (bytes4 magicValue);
-}
-```
-
-**Implementation:** Forwards to Safe's `isValidSignature()`
-
-### IERC165
-
-Interface detection:
-
-```solidity
-function supportsInterface(bytes4 interfaceId) external view returns (bool);
-```
-
-**Supported interfaces:**
-
-- `IDeleGatorCore`
-- `IERC1271`
-- `IERC165`
+**Implementation:** Available on Safe address via fallback routing, not directly on module
 
 ## Execution Modes
 
@@ -193,3 +245,14 @@ function supportsInterface(bytes4 interfaceId) external view returns (bool);
 | `EXECTYPE_TRY`     | ❌        | Not supported     |
 
 **Rationale:** Delegation redemptions should fail atomically to prevent partial state changes.
+
+## Security Model
+
+Multi-layer security:
+
+1. **Layer 1** (`onlyTrustedHandler`): Ensures call came through trusted fallback handler
+2. **Layer 2** (`onlyDelegationManager`): Ensures original caller was DelegationManager
+3. **Layer 3** (`onlyProxy`): Ensures we're on a valid clone, not the implementation
+4. **Layer 4** (Module Authority): Requires module to be enabled on Safe for execution
+
+Even if an attacker bypasses one layer, the others provide protection.

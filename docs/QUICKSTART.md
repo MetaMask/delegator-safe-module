@@ -1,39 +1,49 @@
 # Quick Start Guide
 
-Get started with DeleGatorModule in 5 minutes.
+Get started with DeleGatorModuleFallback in 5 minutes.
 
 ## Prerequisites
 
 - A Safe smart contract wallet
 - Access to DelegationManager deployment
 - Safe owner's signing capability
+- An `ExtensibleFallbackHandler` instance (can be shared across multiple Safes)
 
-## Step 1: Deploy Module
+## Step 1: Deploy ExtensibleFallbackHandler (if not already deployed)
 
-### Using DeleGatorModuleFactory
+```solidity
+ExtensibleFallbackHandler handler = new ExtensibleFallbackHandler();
+```
+
+**Note:** This can be deployed once and reused by all Safes.
+
+## Step 2: Set ExtensibleFallbackHandler as Safe's Fallback Handler
+
+If not already set during Safe creation:
+
+```solidity
+// Via Safe UI: Settings → Advanced → Fallback Handler
+// Or programmatically:
+safe.setFallbackHandler(address(handler));
+```
+
+## Step 3: Deploy Module
+
+### Using DeleGatorModuleFallbackFactory
 
 ```solidity
 // Get factory instance
-DeleGatorModuleFactory factory = DeleGatorModuleFactory(FACTORY_ADDRESS);
+DeleGatorModuleFallbackFactory factory = DeleGatorModuleFallbackFactory(FACTORY_ADDRESS);
 
-// Deploy module for your Safe
-address moduleAddress = factory.deployDeleGatorModule(
+// Deploy module clone for your Safe
+(address moduleAddress, bool alreadyDeployed) = factory.deploy(
     YOUR_SAFE_ADDRESS,
-    DELEGATION_MANAGER_ADDRESS
+    address(extensibleFallbackHandler),  // Trusted handler address
+    SALT  // CREATE2 salt
 );
 ```
 
-### Via Foundry Script
-
-Set required environment variables. Then run:
-
-```bash
-forge script script/DeployDeleGatorModule.s.sol \
-    --rpc-url $RPC_URL \
-    --broadcast
-```
-
-## Step 2: Enable Module in Safe
+## Step 4: Enable Module in Safe
 
 The Safe owner must enable the module:
 
@@ -47,27 +57,59 @@ The Safe owner must enable the module:
 safe.enableModule(moduleAddress);
 ```
 
-## Step 3: Create and Use Delegations
+## Step 5: Register Method Handler
 
-Now create delegations and have delegates redeem them. See the [Usage Guide](./README.md) for detailed code examples.
+Register the `executeFromExecutor` selector with the ExtensibleFallbackHandler:
+
+```solidity
+// From the Safe (requires Safe transaction)
+bytes4 selector = IDeleGatorCore.executeFromExecutor.selector;
+bytes32 method = MarshalLib.encode(false, moduleAddress); // false = not static
+bytes memory calldata = abi.encodeWithSelector(
+    ExtensibleFallbackHandler.setSafeMethod.selector,
+    selector,
+    method
+);
+// Append Safe address for HandlerContext._msgSender()
+bytes memory calldataWithSender = abi.encodePacked(calldata, address(safe));
+safe.execTransaction(address(extensibleFallbackHandler), 0, calldataWithSender, ...);
+```
+
+## Step 6: Create and Use Delegations
+
+Now create delegations using the **Safe address** as the delegator (not the module address):
+
+```solidity
+Delegation memory delegation = Delegation({
+    delegate: delegateAddress,
+    delegator: address(safe),  // Safe address, not module!
+    authority: rootAuthority,
+    caveats: caveats,
+    salt: salt,
+    signature: signature
+});
+```
+
+See the [Usage Guide](./README.md) for detailed code examples.
 
 ## Next Steps
 
 - **[Usage Guide](./README.md)** - Detailed code examples
 - **[Architecture](./ARCHITECTURE.md)** - Technical design details
+- **[DeleGatorModuleFallback Explanation](./DELEGATOR_MODULE_FALLBACK_EXPLANATION.md)** - Deep dive into the architecture
 
 ## Common Pitfalls
 
-❌ **Using Safe address as delegator**
+❌ **Using module address as delegator**
 
 ```solidity
-delegation.delegator = safeAddress;  // WRONG!
+delegation.delegator = moduleAddress;  // WRONG!
 ```
 
-✅ **Use module address as delegator**
+✅ **Use Safe address as delegator**
 
 ```solidity
-delegation.delegator = moduleAddress;  // CORRECT!
+delegation.delegator = safeAddress;  // CORRECT!
 ```
 
 ---
@@ -90,13 +132,48 @@ token.transfer(safeAddress, amount);  // Correct!
 
 ```solidity
 // Deploy module but forget to enable
-module = new DeleGatorModule(delegationManager);
+module = factory.deploy(safe, handler, salt);
 // ❌ Module can't execute without being enabled
 ```
 
 ✅ **Enable module after deployment**
 
 ```solidity
-module = new DeleGatorModule(delegationManager);
+module = factory.deploy(safe, handler, salt);
 safe.enableModule(address(module));  // ✅ Now it works
+```
+
+---
+
+❌ **Forgetting to register method handler**
+
+```solidity
+// Enable module but forget to register handler
+safe.enableModule(module);
+// ❌ executeFromExecutor calls won't route to module
+```
+
+✅ **Register method handler after enabling module**
+
+```solidity
+safe.enableModule(module);
+extensibleFallbackHandler.setSafeMethod(selector, method);  // ✅ Now it works
+```
+
+---
+
+❌ **Using wrong trusted handler**
+
+```solidity
+// Deploy module with handler A
+module = factory.deploy(safe, handlerA, salt);
+// But register method handler with handler B
+handlerB.setSafeMethod(selector, method);  // ❌ Won't work!
+```
+
+✅ **Use same handler for both**
+
+```solidity
+module = factory.deploy(safe, handler, salt);
+handler.setSafeMethod(selector, method);  // ✅ Correct!
 ```
