@@ -689,4 +689,91 @@ contract DeleGatorModuleFallbackIntegrationTest is Test {
         modes_ = new ModeCode[](1);
         modes_[0] = ModeLib.encodeSimpleBatch();
     }
+
+    ////////////////////////////// Interface Support Tests //////////////////////////////
+
+    /// @notice Tests that IDeleGatorCore interface support can be registered and queried
+    function test_InterfaceSupport_RegisterAndQueryIDeleGatorCore() public {
+        bytes4 interfaceId = type(IDeleGatorCore).interfaceId;
+
+        // Call supportsInterface on Safe (which routes to ExtensibleFallbackHandler)
+        // Initially, interface should not be supported
+        bytes memory supportsInterfaceCalldata = abi.encodeWithSelector(
+            bytes4(keccak256("supportsInterface(bytes4)")), interfaceId
+        );
+        
+        (bool success, bytes memory returnData) = address(safe).staticcall(supportsInterfaceCalldata);
+        require(success, "supportsInterface call failed");
+        bool supported = abi.decode(returnData, (bool));
+        assertFalse(supported, "Interface should not be supported initially");
+
+        // Register interface support via Safe transaction
+        bytes memory setSupportedInterfaceCalldata = abi.encodeWithSelector(
+            bytes4(keccak256("setSupportedInterface(bytes4,bool)")), interfaceId, true
+        );
+        bytes memory setCalldataWithSender = abi.encodePacked(setSupportedInterfaceCalldata, address(safe));
+        _executeSafeTransaction(address(extensibleFallbackHandler), 0, setCalldataWithSender);
+
+        // Now interface should be supported when queried on Safe
+        (success, returnData) = address(safe).staticcall(supportsInterfaceCalldata);
+        require(success, "supportsInterface call failed");
+        supported = abi.decode(returnData, (bool));
+        assertTrue(supported, "Interface should be supported after registration");
+    }
+
+    ////////////////////////////// Malformed Calldata Tests //////////////////////////////
+
+    /// @notice Tests that malformed execution calldata reverts with DecodingError
+    function test_MalformedCalldata_RevertsWithDecodingError() public {
+        // Create valid delegation
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create malformed execution calldata (too short for decodeSingle - needs at least 20 bytes for address)
+        bytes memory malformedCalldata = hex"1234"; // Too short
+
+        // Prepare redemption with malformed calldata
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleSingle();
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = malformedCalldata;
+
+        // Should revert when DelegationManager tries to execute (DecodingError from ExecutionLib)
+        vm.prank(delegate);
+        vm.expectRevert(); // ExecutionLib.ERC7579DecodingError() - selector 0xba597e7e
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    /// @notice Tests that malformed batch execution calldata reverts with DecodingError
+    function test_MalformedBatchCalldata_RevertsWithDecodingError() public {
+        // Create valid delegation
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create malformed batch execution calldata (invalid structure - offset points beyond data)
+        bytes memory malformedBatchCalldata = hex"00000000000000000000000000000000000000000000000000000000000000ff"; // Invalid offset
+
+        // Prepare redemption with malformed batch calldata
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleBatch();
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = malformedBatchCalldata;
+
+        // Should revert when DelegationManager tries to execute (DecodingError from ExecutionLib)
+        vm.prank(delegate);
+        vm.expectRevert(); // ExecutionLib.ERC7579DecodingError() - selector 0xba597e7e
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
 }
