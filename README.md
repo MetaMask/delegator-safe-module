@@ -26,15 +26,14 @@ A Safe module that enables delegation capabilities via the [Delegation Framework
 - A Safe smart contract wallet
 - Access to DelegationManager deployment
 - Safe owner's signing capability
-- An `ExtensibleFallbackHandler` instance (can be shared across multiple Safes)
 
-### Step 1: Deploy ExtensibleFallbackHandler (if not already deployed)
+### Step 1: Deploy ExtensibleFallbackHandler
 
 ```solidity
 ExtensibleFallbackHandler handler = new ExtensibleFallbackHandler();
 ```
 
-**Note:** This can be deployed once and reused by all Safes.
+**Note:** Each Safe needs its own `ExtensibleFallbackHandler` instance. It cannot be shared between Safes.
 
 ### Step 2: Set ExtensibleFallbackHandler as Safe's Fallback Handler
 

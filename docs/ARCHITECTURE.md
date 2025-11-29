@@ -91,7 +91,19 @@ A Safe can only have **one fallback handler** at a time. By using `ExtensibleFal
 1. **Composability**: Combine with other fallback handlers (token callbacks, signature verifiers, etc.)
 2. **Separation of Concerns**: Focus solely on Delegation Framework tasks
 3. **Future-Proofing**: Add new handlers without replacing delegation functionality
-4. **Gas Efficiency**: Shared handler instances can be reused across multiple Safes
+
+## One Instance Per Safe
+
+**Important:** Both `ExtensibleFallbackHandler` and `DeleGatorModuleFallback` are **not singletons** and **cannot be shared** between Safes. Each Safe must have its own instances of both contracts.
+
+**Why:**
+
+- `ExtensibleFallbackHandler` stores Safe-specific mappings (`safeMethods`, `safeInterfaces`) that cannot be shared
+- `DeleGatorModuleFallback` is bound to a specific Safe address via immutable args and validates the Safe parameter in `handle()`
+- Safe modules require per-Safe registration and authority
+- Security isolation prevents cross-Safe execution
+
+Both contracts must be deployed per Safe to ensure proper isolation and Safe-specific configuration.
 
 ## Call Flow
 
@@ -127,9 +139,10 @@ Each Safe gets its own `DeleGatorModuleFallback` instance via LibClone:
 
 **Benefits:**
 
-- Minimal gas cost per deployment
-- Shared implementation reduces attack surface
+- Minimal gas cost per deployment (clones are cheap)
+- Shared implementation reduces attack surface (single implementation contract)
 - Each clone bound to specific Safe and trusted handler via immutable args
+- **One clone per Safe**: Each Safe gets its own isolated module instance
 
 ### Immutable Arguments
 
@@ -277,19 +290,19 @@ This registers the interface in the handler's `safeInterfaces` mapping, which is
 
 ## Deployment Flow
 
-1. **Deploy shared `ExtensibleFallbackHandler`** (once, can be reused by all Safes)
-2. **Deploy `DeleGatorModuleFallbackFactory`** with `DelegationManager` address
+1. **Deploy `DeleGatorModuleFallbackFactory`** with `DelegationManager` address
    - The factory deploys the `DeleGatorModuleFallback` implementation internally
    - The implementation contract doesn't store `trustedHandler` - clones read it from immutable args
-3. **For each Safe**:
-   - **Deploy clone**: Call `DeleGatorModuleFallbackFactory.deploy(safeAddress, trustedHandlerAddress, salt)` to create a clone
+2. **For each Safe**:
+   - **Deploy `ExtensibleFallbackHandler`**: Create a new handler instance for this Safe
+   - **Deploy module clone**: Call `DeleGatorModuleFallbackFactory.deploy(safeAddress, trustedHandlerAddress, salt)` to create a clone
      - Both `safeAddress` and `trustedHandlerAddress` are stored as immutable args (40 bytes total: 20 bytes each)
-   - **Enable the clone as a module**: `Safe.enableModule(cloneAddress)` ← Module Role
    - Set `ExtensibleFallbackHandler` as Safe's fallback handler (if not already set)
+   - **Enable the clone as a module**: `Safe.enableModule(cloneAddress)` ← Module Role
    - **Register method handler**: `ExtensibleFallbackHandler.setSafeMethod(selector, method)` ← FallbackHandler Role
    - Optionally register `IDeleGatorCore` interface support
 
-**Important**: Both the module registration and fallback handler registration are required. The contract will not function correctly if either is missing.
+**Important**: Both the module registration and fallback handler registration are required. The contract will not function correctly if either is missing. Both `ExtensibleFallbackHandler` and `DeleGatorModuleFallback` must be deployed per Safe.
 
 ## Usage Examples
 
@@ -348,10 +361,6 @@ Call `disableDelegation` on the DelegationManager directly from the Safe (via Sa
 - ✅ **Yes!** Both are required:
   1. **Module Registration**: `Safe.enableModule(moduleAddress)` - Provides module authority for execution
   2. **Fallback Handler Registration**: `ExtensibleFallbackHandler.setSafeMethod(selector, method)` - Routes `executeFromExecutor` calls to the module
-
-**Can multiple Safes share the same ExtensibleFallbackHandler?**
-
-- ✅ **Yes!** Multiple Safes can use the same `ExtensibleFallbackHandler` instance, but each Safe needs its own `DeleGatorModuleFallback` clone with the method handler registered.
 
 ## References
 
