@@ -7,6 +7,8 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { ModeLib } from "@erc7579/lib/ModeLib.sol";
 import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
+import { CallType, ExecType, ModeSelector, ModePayload } from "@delegation-framework/utils/Types.sol";
+import { CALLTYPE_SINGLE, CALLTYPE_BATCH, EXECTYPE_DEFAULT } from "@delegation-framework/utils/Constants.sol";
 
 import { DelegationManager } from "@delegation-framework/DelegationManager.sol";
 import { EncoderLib } from "@delegation-framework/libraries/EncoderLib.sol";
@@ -22,6 +24,7 @@ import { ExtensibleFallbackHandler } from "@safe-smart-account/handler/Extensibl
 import { MarshalLib } from "@safe-smart-account/handler/extensible/MarshalLib.sol";
 import { Enum } from "@safe-smart-account/libraries/Enum.sol";
 import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
+import { IDelegationManager } from "@delegation-framework/interfaces/IDelegationManager.sol";
 
 /// @notice Basic ERC20 token for testing
 contract TestToken is ERC20 {
@@ -31,6 +34,19 @@ contract TestToken is ERC20 {
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+}
+
+/// @notice Contract that reverts for testing execution failure scenarios
+contract RevertingContract {
+    function revertWithReason(string memory reason) external pure {
+        revert(reason);
+    }
+
+    function revertWithoutReason() external pure {
+        assembly {
+            revert(0, 0)
+        }
     }
 }
 
@@ -640,9 +656,7 @@ contract DeleGatorModuleFallbackIntegrationTest is Test {
     /// @notice Helper to create a token transfer execution
     function _createTokenTransferExecution(address _recipient, uint256 _amount) internal view returns (Execution memory) {
         return Execution({
-            target: address(token),
-            value: 0,
-            callData: abi.encodeWithSelector(IERC20.transfer.selector, _recipient, _amount)
+            target: address(token), value: 0, callData: abi.encodeWithSelector(IERC20.transfer.selector, _recipient, _amount)
         });
     }
 
@@ -698,19 +712,16 @@ contract DeleGatorModuleFallbackIntegrationTest is Test {
 
         // Call supportsInterface on Safe (which routes to ExtensibleFallbackHandler)
         // Initially, interface should not be supported
-        bytes memory supportsInterfaceCalldata = abi.encodeWithSelector(
-            bytes4(keccak256("supportsInterface(bytes4)")), interfaceId
-        );
-        
+        bytes memory supportsInterfaceCalldata = abi.encodeWithSelector(bytes4(keccak256("supportsInterface(bytes4)")), interfaceId);
+
         (bool success, bytes memory returnData) = address(safe).staticcall(supportsInterfaceCalldata);
         require(success, "supportsInterface call failed");
         bool supported = abi.decode(returnData, (bool));
         assertFalse(supported, "Interface should not be supported initially");
 
         // Register interface support via Safe transaction
-        bytes memory setSupportedInterfaceCalldata = abi.encodeWithSelector(
-            bytes4(keccak256("setSupportedInterface(bytes4,bool)")), interfaceId, true
-        );
+        bytes memory setSupportedInterfaceCalldata =
+            abi.encodeWithSelector(bytes4(keccak256("setSupportedInterface(bytes4,bool)")), interfaceId, true);
         bytes memory setCalldataWithSender = abi.encodePacked(setSupportedInterfaceCalldata, address(safe));
         _executeSafeTransaction(address(extensibleFallbackHandler), 0, setCalldataWithSender);
 
@@ -756,7 +767,8 @@ contract DeleGatorModuleFallbackIntegrationTest is Test {
         Delegation memory delegation = _createAndSignDelegation();
 
         // Create malformed batch execution calldata (invalid structure - offset points beyond data)
-        bytes memory malformedBatchCalldata = hex"00000000000000000000000000000000000000000000000000000000000000ff"; // Invalid offset
+        bytes memory malformedBatchCalldata = hex"00000000000000000000000000000000000000000000000000000000000000ff"; // Invalid
+        // offset
 
         // Prepare redemption with malformed batch calldata
         Delegation[] memory delegations = new Delegation[](1);
@@ -775,5 +787,378 @@ contract DeleGatorModuleFallbackIntegrationTest is Test {
         vm.prank(delegate);
         vm.expectRevert(); // ExecutionLib.ERC7579DecodingError() - selector 0xba597e7e
         delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    ////////////////////////////// Edge Cases and Security Scenarios //////////////////////////////
+
+    /// @notice Test that disabling the module prevents execution
+    function test_EdgeCase_ModuleDisabledPreventsExecution() public {
+        uint256 ownerKey = 0x1234;
+        address owner = vm.addr(ownerKey);
+        (ISafe testSafe, DeleGatorModuleFallback testModule) = _deploySafeWithModule(owner, ownerKey, 100);
+
+        // Create and sign delegation using Safe's message format
+        Delegation memory delegation = Delegation({
+            delegate: makeAddr("delegate"),
+            delegator: address(testSafe),
+            authority: ROOT_AUTHORITY,
+            caveats: new Caveat[](0),
+            salt: 0,
+            signature: hex""
+        });
+        delegation = _signDelegationForSafe(address(testSafe), ownerKey, delegation);
+
+        // Disable the module - call disableModule directly on Safe
+        // disableModule(address prevModule, address module) - for a single module, prevModule is SENTINEL_MODULES (address(1))
+        address SENTINEL_MODULES = address(0x1);
+        bytes memory disableModuleData =
+            abi.encodeWithSelector(bytes4(keccak256("disableModule(address,address)")), SENTINEL_MODULES, address(testModule));
+        _executeSafeTransactionForSafe(testSafe, ownerKey, address(testSafe), 0, disableModuleData);
+
+        // Try to redeem delegation - should fail because module is disabled
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleSingle();
+
+        Execution memory execution = Execution({ target: makeAddr("target"), value: 0, callData: "" });
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeSingle(execution.target, execution.value, execution.callData);
+
+        vm.prank(makeAddr("delegate"));
+        vm.expectRevert(); // Should revert because module can't execute (GS104: Method can only be called from an enabled module)
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    /// @notice Test that two Safes can share the same ExtensibleFallbackHandler with different modules
+    function test_EdgeCase_MultipleSafesShareHandler() public {
+        uint256 ownerKey1 = 0x1234;
+        uint256 ownerKey2 = 0x5678;
+        address owner1 = vm.addr(ownerKey1);
+        address owner2 = vm.addr(ownerKey2);
+
+        (ISafe safe1, DeleGatorModuleFallback module1) = _deploySafeWithModule(owner1, ownerKey1, 200);
+        (ISafe safe2, DeleGatorModuleFallback module2) = _deploySafeWithModule(owner2, ownerKey2, 201);
+
+        // Verify both Safes use the same handler but different modules
+        // Note: We can't directly query fallback handler from ISafe interface,
+        // but we know from setup that both use extensibleFallbackHandler
+        // The important check is that modules are different and bound to correct Safes
+        assertTrue(address(module1) != address(module2));
+
+        // Verify each module is bound to its respective Safe
+        assertEq(module1.safe(), address(safe1));
+        assertEq(module2.safe(), address(safe2));
+
+        // Verify each module has the same trusted handler
+        assertEq(module1.trustedHandler(), address(extensibleFallbackHandler));
+        assertEq(module2.trustedHandler(), address(extensibleFallbackHandler));
+    }
+
+    /// @notice Test that changing Safe's fallback handler breaks delegation execution
+    function test_EdgeCase_FallbackHandlerChangedBreaksExecution() public {
+        uint256 ownerKey = 0x1234;
+        address owner = vm.addr(ownerKey);
+        (ISafe testSafe,) = _deploySafeWithModule(owner, ownerKey, 300);
+
+        // Create and sign delegation using Safe's message format
+        Delegation memory delegation = Delegation({
+            delegate: makeAddr("delegate"),
+            delegator: address(testSafe),
+            authority: ROOT_AUTHORITY,
+            caveats: new Caveat[](0),
+            salt: 0,
+            signature: hex""
+        });
+        delegation = _signDelegationForSafe(address(testSafe), ownerKey, delegation);
+
+        // Change fallback handler to a different one
+        ExtensibleFallbackHandler newHandler = new ExtensibleFallbackHandler();
+        bytes memory setFallbackHandlerData =
+            abi.encodeWithSelector(bytes4(keccak256("setFallbackHandler(address)")), address(newHandler));
+        _executeSafeTransactionForSafe(testSafe, ownerKey, address(testSafe), 0, setFallbackHandlerData);
+
+        // Try to redeem delegation - should fail because new handler doesn't have the method registered
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleSingle();
+
+        Execution memory execution = Execution({ target: makeAddr("target"), value: 0, callData: "" });
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeSingle(execution.target, execution.value, execution.callData);
+
+        vm.prank(makeAddr("delegate"));
+        vm.expectRevert(); // Should revert because new handler doesn't route to module
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    /// @notice Test that delegation revocation prevents execution
+    function test_EdgeCase_DelegationRevocationPreventsExecution() public {
+        uint256 ownerKey = 0x1234;
+        address owner = vm.addr(ownerKey);
+        address delegateAddr = makeAddr("delegate");
+        (ISafe testSafe,) = _deploySafeWithModule(owner, ownerKey, 300);
+
+        // Create and sign delegation using Safe's message format
+        Delegation memory delegation = Delegation({
+            delegate: delegateAddr,
+            delegator: address(testSafe),
+            authority: ROOT_AUTHORITY,
+            caveats: new Caveat[](0),
+            salt: 0,
+            signature: hex""
+        });
+        delegation = _signDelegationForSafe(address(testSafe), ownerKey, delegation);
+        bytes32 delegationHash = EncoderLib._getDelegationHash(delegation);
+
+        // Revoke delegation
+        bytes memory disableData = abi.encodeWithSelector(IDelegationManager.disableDelegation.selector, delegation);
+        _executeSafeTransactionForSafe(testSafe, ownerKey, address(delegationManager), 0, disableData);
+        assertTrue(delegationManager.disabledDelegations(delegationHash));
+
+        // Prepare redemption data
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory contexts = new bytes[](1);
+        contexts[0] = abi.encode(delegations);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleSingle();
+        bytes[] memory callDatas = new bytes[](1);
+        callDatas[0] = ExecutionLib.encodeSingle(makeAddr("target"), 0, "");
+
+        // Should revert
+        vm.prank(delegateAddr);
+        vm.expectRevert(abi.encodeWithSelector(IDelegationManager.CannotUseADisabledDelegation.selector));
+        delegationManager.redeemDelegations(contexts, modes, callDatas);
+    }
+
+    /// @notice Test that empty batch execution array is handled correctly
+    function test_EdgeCase_EmptyBatchExecution() public {
+        uint256 ownerKey = 0x1234;
+        address owner = vm.addr(ownerKey);
+        (ISafe testSafe,) = _deploySafeWithModule(owner, ownerKey, 300);
+
+        // Create and sign delegation using Safe's message format
+        Delegation memory delegation = Delegation({
+            delegate: makeAddr("delegate"),
+            delegator: address(testSafe),
+            authority: ROOT_AUTHORITY,
+            caveats: new Caveat[](0),
+            salt: 0,
+            signature: hex""
+        });
+        delegation = _signDelegationForSafe(address(testSafe), ownerKey, delegation);
+
+        // Try to redeem with empty batch
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeLib.encodeSimpleBatch(); // Batch mode
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        // Empty batch - encodeBatch with empty array
+        executionCallDatas[0] = ExecutionLib.encodeBatch(new Execution[](0));
+
+        vm.prank(makeAddr("delegate"));
+        // Should succeed but execute nothing
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    ////////////////////////////// Unsupported Mode Tests //////////////////////////////
+
+    /// @notice Test that unsupported ExecType in batch mode reverts with UnsupportedExecType
+    function test_UnsupportedExecType_BatchMode() public {
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create mode with unsupported ExecType (0x02) for batch
+        ModeCode unsupportedMode =
+            ModeLib.encode(CALLTYPE_BATCH, ExecType.wrap(0x02), ModeSelector.wrap(bytes4(0)), ModePayload.wrap(bytes22(0)));
+
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = _createTokenTransferExecution(recipient, 100 ether);
+
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = unsupportedMode;
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        vm.prank(delegate);
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModuleFallback.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    /// @notice Test that unsupported ExecType in single mode reverts with UnsupportedExecType
+    function test_UnsupportedExecType_SingleMode() public {
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create mode with unsupported ExecType (0x02) for single
+        ModeCode unsupportedMode =
+            ModeLib.encode(CALLTYPE_SINGLE, ExecType.wrap(0x02), ModeSelector.wrap(bytes4(0)), ModePayload.wrap(bytes22(0)));
+
+        Execution memory execution = _createTokenTransferExecution(recipient, 100 ether);
+
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = unsupportedMode;
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeSingle(execution.target, execution.value, execution.callData);
+
+        vm.prank(delegate);
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModuleFallback.UnsupportedExecType.selector, ExecType.wrap(0x02)));
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    /// @notice Test that unsupported CallType reverts with UnsupportedCallType
+    function test_UnsupportedCallType() public {
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create mode with unsupported CallType (0x02)
+        ModeCode unsupportedMode =
+            ModeLib.encode(CallType.wrap(0x02), EXECTYPE_DEFAULT, ModeSelector.wrap(bytes4(0)), ModePayload.wrap(bytes22(0)));
+
+        Execution memory execution = _createTokenTransferExecution(recipient, 100 ether);
+
+        Delegation[] memory delegations = new Delegation[](1);
+        delegations[0] = delegation;
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = abi.encode(delegations);
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = unsupportedMode;
+
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeSingle(execution.target, execution.value, execution.callData);
+
+        vm.prank(delegate);
+        vm.expectRevert(abi.encodeWithSelector(DeleGatorModuleFallback.UnsupportedCallType.selector, CallType.wrap(0x02)));
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    ////////////////////////////// Execution Failure Tests //////////////////////////////
+
+    /// @notice Test that execution failure with revert reason bubbles up the revert reason
+    function test_ExecutionFailure_BubblesUpRevertReason() public {
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create a contract that will revert with a custom error
+        RevertingContract revertingContract = new RevertingContract();
+
+        // Try to call a function that will revert
+        Execution memory execution = Execution({
+            target: address(revertingContract),
+            value: 0,
+            callData: abi.encodeWithSelector(RevertingContract.revertWithReason.selector, "Custom revert reason")
+        });
+
+        (bytes[] memory permissionContexts, ModeCode[] memory modes, bytes[] memory executionCallDatas) =
+            _prepareSingleRedemption(delegation, execution);
+
+        vm.prank(delegate);
+        // Should revert with the custom revert reason from the contract
+        vm.expectRevert("Custom revert reason");
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    /// @notice Test that execution failure without revert reason reverts with ExecutionFailed
+    function test_ExecutionFailure_NoRevertReason() public {
+        Delegation memory delegation = _createAndSignDelegation();
+
+        // Create a contract that will revert without a reason
+        RevertingContract revertingContract = new RevertingContract();
+
+        // Try to call a function that will revert without a reason
+        Execution memory execution = Execution({
+            target: address(revertingContract),
+            value: 0,
+            callData: abi.encodeWithSelector(RevertingContract.revertWithoutReason.selector)
+        });
+
+        (bytes[] memory permissionContexts, ModeCode[] memory modes, bytes[] memory executionCallDatas) =
+            _prepareSingleRedemption(delegation, execution);
+
+        vm.prank(delegate);
+        // Should revert with ExecutionFailed() error
+        vm.expectRevert(DeleGatorModuleFallback.ExecutionFailed.selector);
+        delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas);
+    }
+
+    ////////////////////////////// Additional Helper Functions //////////////////////////////
+
+    /// @notice Helper to deploy and setup a Safe with module
+    /// @param owner The owner address
+    /// @param ownerKey Private key of the owner
+    /// @param nonce Nonce for Safe deployment
+    /// @return safe_ The deployed Safe instance
+    /// @return module_ The deployed and configured module
+    function _deploySafeWithModule(
+        address owner,
+        uint256 ownerKey,
+        uint256 nonce
+    )
+        internal
+        returns (ISafe safe_, DeleGatorModuleFallback module_)
+    {
+        address[] memory owners = new address[](1);
+        owners[0] = owner;
+        bytes memory setupData = abi.encodeWithSelector(
+            ISafe.setup.selector, owners, 1, address(0), "", address(extensibleFallbackHandler), address(0), 0, address(0)
+        );
+
+        SafeProxy proxy = safeProxyFactory.createProxyWithNonce(address(safeSingleton), setupData, nonce);
+        safe_ = ISafe(payable(address(proxy)));
+
+        bytes32 salt = keccak256(abi.encodePacked(owner, nonce));
+        (address moduleAddress,) = factory.deploy(address(safe_), address(extensibleFallbackHandler), salt);
+        module_ = DeleGatorModuleFallback(moduleAddress);
+
+        // Enable module
+        bytes memory enableModuleData = abi.encodeWithSelector(bytes4(keccak256("enableModule(address)")), address(module_));
+        _executeSafeTransactionForSafe(safe_, ownerKey, address(safe_), 0, enableModuleData);
+
+        // Register method handler
+        bytes4 selector = IDeleGatorCore.executeFromExecutor.selector;
+        bytes32 encodedMethod = MarshalLib.encode(false, address(module_));
+        bytes memory setSafeMethodCalldata =
+            abi.encodeWithSelector(bytes4(keccak256("setSafeMethod(bytes4,bytes32)")), selector, encodedMethod);
+        bytes memory calldataWithSender = abi.encodePacked(setSafeMethodCalldata, address(safe_));
+        _executeSafeTransactionForSafe(safe_, ownerKey, address(extensibleFallbackHandler), 0, calldataWithSender);
+    }
+
+    /// @notice Helper to execute a Safe transaction for a specific Safe instance
+    /// @param safe_ The Safe instance to execute transaction on
+    /// @param ownerKey Private key of the Safe owner
+    /// @param to Target address
+    /// @param value ETH value
+    /// @param data Transaction data
+    function _executeSafeTransactionForSafe(ISafe safe_, uint256 ownerKey, address to, uint256 value, bytes memory data) internal {
+        uint256 nonce = safe_.nonce();
+        bytes32 txHash = safe_.getTransactionHash(to, value, data, Enum.Operation.Call, 0, 0, 0, address(0), address(0), nonce);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerKey, txHash);
+        bytes memory signatures = abi.encodePacked(r, s, v);
+        bool success = safe_.execTransaction{ value: value }(
+            to, value, data, Enum.Operation.Call, 0, 0, 0, address(0), payable(address(0)), signatures
+        );
+        require(success, "Safe transaction failed");
     }
 }

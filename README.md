@@ -27,10 +27,21 @@ A Safe module that enables delegation capabilities via the [Delegation Framework
 - Access to DelegationManager deployment
 - Safe owner's signing capability
 
-### Step 1: Deploy ExtensibleFallbackHandler
+### Step 1: Get ExtensibleFallbackHandler
 
-```solidity
-ExtensibleFallbackHandler handler = new ExtensibleFallbackHandler();
+You can use an existing `ExtensibleFallbackHandler` or deploy a new one if needed.
+
+**Option A: Use Existing Handler**
+
+If your Safe already has an `ExtensibleFallbackHandler` set as its fallback handler, you can use that address.
+
+**Option B: Deploy New Handler (if needed)**
+
+**Via Foundry Script:**
+
+```bash
+export DEPLOYER_PRIVATE_KEY=0x...
+forge script script/DeployExtensibleFallbackHandler.s.sol --rpc-url $RPC_URL --broadcast
 ```
 
 **Note:** Each Safe needs its own `ExtensibleFallbackHandler` instance. It cannot be shared between Safes.
@@ -47,14 +58,16 @@ safe.setFallbackHandler(address(handler));
 
 ### Step 3: Deploy Module
 
-```solidity
-DeleGatorModuleFallbackFactory factory = DeleGatorModuleFallbackFactory(FACTORY_ADDRESS);
+**Via Foundry Script**
 
-(address moduleAddress, bool alreadyDeployed) = factory.deploy(
-    YOUR_SAFE_ADDRESS,
-    address(extensibleFallbackHandler),  // Trusted handler address
-    SALT  // CREATE2 salt
-);
+```bash
+export DELEGATION_MANAGER=0x...
+export SAFE_ADDRESS=0x...
+export TRUSTED_HANDLER=0x...  # ExtensibleFallbackHandler address from Step 1
+export DEPLOYER_PRIVATE_KEY=0x...
+export SALT="your-salt"  # Required: use a salt shorter than 32 bytes
+
+forge script script/DeployDeleGatorModuleFallback.s.sol --rpc-url $RPC_URL --broadcast
 ```
 
 ### Step 4: Enable Module in Safe
@@ -83,7 +96,26 @@ bytes memory calldataWithSender = abi.encodePacked(calldata, address(safe));
 safe.execTransaction(address(extensibleFallbackHandler), 0, calldataWithSender, ...);
 ```
 
-### Step 6: Create and Use Delegations
+### Step 6: Register Interface Support (Optional)
+
+Register `IDeleGatorCore` interface support for ERC165 queries:
+
+```solidity
+// From the Safe (requires Safe transaction)
+bytes4 interfaceId = type(IDeleGatorCore).interfaceId;
+bytes memory setSupportedInterfaceCalldata = abi.encodeWithSelector(
+    bytes4(keccak256("setSupportedInterface(bytes4,bool)")),
+    interfaceId,
+    true
+);
+// Append Safe address for HandlerContext._msgSender()
+bytes memory calldataWithSender = abi.encodePacked(setSupportedInterfaceCalldata, address(safe));
+safe.execTransaction(address(extensibleFallbackHandler), 0, calldataWithSender, ...);
+```
+
+**Note:** This step is optional but recommended if you want the Safe to report `IDeleGatorCore` interface support via ERC165.
+
+### Step 7: Create and Use Delegations
 
 Create delegations using the **Safe address** as the delegator (not the module address):
 
@@ -118,26 +150,6 @@ forge test
 # Coverage
 cd script && ./coverage
 ```
-
-## Deployment
-
-Set environment variables and deploy:
-
-```bash
-export DELEGATION_MANAGER=0x...
-export SAFE_ADDRESS=0x...
-export TRUSTED_HANDLER=0x...  # ExtensibleFallbackHandler address
-export DEPLOYER_PRIVATE_KEY=0x...
-export SALT="your-salt"  # Required: use a salt shorter than 32 bytes
-
-forge script script/DeployDeleGatorModuleFallback.s.sol --rpc-url $RPC_URL --broadcast
-```
-
-**Note:** After deployment, you must:
-
-1. Enable the module in the Safe: `Safe.enableModule(moduleAddress)`
-2. Register the method handler: `ExtensibleFallbackHandler.setSafeMethod(selector, method)` (from the Safe)
-3. Ensure the ExtensibleFallbackHandler is set as the Safe's fallback handler
 
 ## Common Pitfalls
 

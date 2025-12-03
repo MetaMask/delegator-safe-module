@@ -213,51 +213,6 @@ modifier onlySelf() {
 **Applies to:** `executeFromExecutor()`  
 **Purpose:** Ensure `executeFromExecutor()` can only be called internally via `this.executeFromExecutor()`
 
-## Security Model
-
-Multi-layer security:
-
-1. **Layer 1** (`onlyTrustedHandler`): Ensures call came through trusted fallback handler
-2. **Layer 2** (`onlyDelegationManager`): Ensures original caller was DelegationManager
-3. **Layer 3** (`onlyProxy`): Ensures we're on a valid clone, not the implementation
-4. **Layer 4** (Module Authority): Requires module to be enabled on Safe for execution
-
-Even if an attacker bypasses one layer, the others provide protection.
-
-## Interface Implementation
-
-### IFallbackMethod
-
-Required by ExtensibleFallbackHandler:
-
-```solidity
-interface IFallbackMethod {
-    function handle(
-        ISafe safe,
-        address sender,
-        uint256 value,
-        bytes calldata data
-    ) external returns (bytes memory);
-}
-```
-
-**Implementation:** Validates call and routes to `executeFromExecutor()`
-
-### IDeleGatorCore (via fallback)
-
-The `executeFromExecutor` functionality is provided through the fallback mechanism:
-
-```solidity
-interface IDeleGatorCore {
-    function executeFromExecutor(
-        ModeCode mode,
-        bytes calldata executionCalldata
-    ) external payable returns (bytes[] memory);
-}
-```
-
-**Implementation:** Available on Safe address via fallback routing, not directly on module
-
 ### Interface Support Registration
 
 To register `IDeleGatorCore` interface support for ERC165:
@@ -347,10 +302,6 @@ delegationManager.redeemDelegations(
 Call `disableDelegation` on the DelegationManager directly from the Safe (via Safe transaction) to revoke permissions.
 
 ## FAQ
-
-**Can I use my Safe as a delegate?**
-
-- ✅ **Yes!** With `DeleGatorModuleFallback`, the Safe itself acts as the delegator. When delegating to a Safe, use the Safe address as the delegate.
 
 **What signature schemes are supported?**
 

@@ -229,8 +229,6 @@ contract DeleGatorModuleFallback is IFallbackMethod {
         onlySelf
         returns (bytes[] memory returnData_)
     {
-        if (msg.value != 0) revert NonZeroValue();
-
         (CallType callType_, ExecType execType_,,) = _mode.decode();
 
         if (callType_ == CALLTYPE_BATCH) {
