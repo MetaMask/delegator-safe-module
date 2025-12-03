@@ -14,8 +14,20 @@ contract DeleGatorModuleFallbackFactory {
     address public immutable delegationManager;
 
     /// @notice Emitted when a module deployment is attempted
+    /// @param safe The Safe address for which the module was deployed
+    /// @param implementation The implementation contract address
+    /// @param module The deployed module address
+    /// @param trustedHandler The trusted ExtensibleFallbackHandler address used for this deployment
+    /// @param salt The salt used for CREATE2 deployment
     /// @param alreadyDeployed True if the module was already deployed, false if it was newly deployed
-    event ModuleDeployed(address indexed safe, address indexed implementation, address module, bytes32 salt, bool alreadyDeployed);
+    event ModuleDeployed(
+        address indexed safe,
+        address indexed implementation,
+        address module,
+        address indexed trustedHandler,
+        bytes32 salt,
+        bool alreadyDeployed
+    );
 
     /// @notice Constructor for the factory
     /// @param _delegationManager The address of the trusted DelegationManager
@@ -42,7 +54,7 @@ contract DeleGatorModuleFallbackFactory {
         bytes memory args_ = abi.encodePacked(_safe, _trustedHandler); // 40 bytes (20 + 20)
         (alreadyDeployed_, module_) = LibClone.createDeterministicClone(implementation, args_, _salt);
 
-        emit ModuleDeployed(_safe, implementation, module_, _salt, alreadyDeployed_);
+        emit ModuleDeployed(_safe, implementation, module_, _trustedHandler, _salt, alreadyDeployed_);
     }
 
     /// @notice Predicts the address of a DeleGatorModuleFallback clone

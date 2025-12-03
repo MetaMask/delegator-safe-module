@@ -42,7 +42,7 @@ contract DeployExtensibleFallbackHandler is Script {
         console2.log("");
         console2.log("Next Steps:");
         console2.log("1. Set this handler as your Safe's fallback handler:");
-        console2.log("   - Via Safe UI: Settings → Advanced → Fallback Handler");
+        console2.log("   - Via Safe UI: Settings -> Advanced -> Fallback Handler");
         console2.log("   - Or programmatically: Safe.setFallbackHandler(", deployedHandler, ")");
         console2.log("");
         console2.log("2. Use this handler address when deploying DeleGatorModuleFallback:");

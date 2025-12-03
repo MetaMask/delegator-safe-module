@@ -558,7 +558,7 @@ contract DeleGatorModuleFallbackTest is Test {
 
         // Use expectEmit - check all topics and data
         vm.expectEmit(true, true, true, true);
-        emit DeleGatorModuleFallbackFactory.ModuleDeployed(safe1, factory.implementation(), predicted, salt, false);
+        emit DeleGatorModuleFallbackFactory.ModuleDeployed(safe1, factory.implementation(), predicted, trustedHandler1, salt, false);
 
         (address module, bool deployed) = factory.deploy(safe1, trustedHandler1, salt);
         assertFalse(deployed);
@@ -572,7 +572,7 @@ contract DeleGatorModuleFallbackTest is Test {
         (address module1,) = factory.deploy(safe1, trustedHandler1, salt);
 
         vm.expectEmit(true, true, true, true);
-        emit DeleGatorModuleFallbackFactory.ModuleDeployed(safe1, factory.implementation(), module1, salt, true);
+        emit DeleGatorModuleFallbackFactory.ModuleDeployed(safe1, factory.implementation(), module1, trustedHandler1, salt, true);
 
         (address module2,) = factory.deploy(safe1, trustedHandler1, salt);
         assertEq(module1, module2);
