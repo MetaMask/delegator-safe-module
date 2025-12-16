@@ -1,11 +1,10 @@
-> [!WARNING]
-> These contracts have **not been audited**.  
-> **Do not use on production mainnet chains**.  
-> Use only for testing or development purposes at your own risk.
-
 # DeleGator Safe Module
 
 A Safe module that enables delegation capabilities via the [Delegation Framework](https://github.com/MetaMask/delegation-framework).
+
+## Security
+
+- 🔒 **[Audit Report](./audit/diligence-11-25.pdf)** - Consensys Diligence audit (November 2025)
 
 ## Documentation
 
